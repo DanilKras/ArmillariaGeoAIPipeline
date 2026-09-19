@@ -1,0 +1,34 @@
+project:
+  name: "Armillaria_GeoAI_Pipeline"
+  target_species: "Armillaria ostoyae"
+  region: "Sopron_Hungary"
+
+paths:
+  raw_data: "data/01_raw/armillaria_europe.csv"
+  clean_gpkg: "data/02_processed/armillaria_clean.gpkg"
+  features_combined: "data/02_processed/features_combined.csv"
+  features_terrain_checkpoint: "data/02_processed/features_terrain_checkpoint.parquet"
+  features_advanced: "data/02_processed/features_advanced.parquet"
+
+  model_weights: "models/armillaria_spatial_xgb.json"
+  risk_map_tif: "data/03_results/maps/sopron_armillaria_risk.tif"
+  shap_summary_plot: "data/03_results/figures/spatial_shap_summary.png"
+  eda_distribution_plot: "data/03_results/figures/clean_presence_distribution.png"
+
+spatial:
+  bbox: [16.45, 47.55, 16.70, 47.75]
+  crs_wgs84: "EPSG:4326"
+  crs_projected: "EPSG:3035"
+  block_size_meters: 150000
+
+cv_params:
+  n_splits: 5
+
+model_params:
+  n_estimators: 250
+  learning_rate: 0.03
+  max_depth: 5
+  subsample: 0.8
+  colsample_bytree: 0.8
+  random_state: 42
+  eval_metric: "auc"
