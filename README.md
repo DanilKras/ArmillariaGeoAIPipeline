@@ -65,7 +65,7 @@ The workflow automates data collection, environmental feature extraction, spatia
 │   └── inference.py
 ├── docker-compose.yaml
 └── pyproject.toml
-
+```
 
 ## Installation & Setup
 
