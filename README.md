@@ -82,19 +82,20 @@ The workflow automates data collection, environmental feature extraction, spatia
 uv venv .venv
 source .venv/bin/activate   # On Windows: .venv\Scripts\activate
 uv sync
-
+```
 **Or using standard `pip`:**
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate   # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-
+```
 ### Step 2: Code Quality Check
 
 ```bash
 uv run ruff check . --fix
 uv run ruff format .
+```
 
 ## Running the Pipeline
 
@@ -107,26 +108,27 @@ You can run each stage of the pipeline sequentially:
 
   ```bash
   python -m src.data_processing
-
+```
 3. Generate pseudo-absences:
 
   ```bash
   python -m src.negative_sampling
+```
 4. Extract DEM and TerraClimate features:
 
   ```bash
   python -m src.feature_extraction
-
+```
 5. Train XGBoost model with Spatial CV:
 
   ```bash
   python -m src.model_training
-
+```
 6. Generate regional 30m risk GeoTIFF:
 
   ```bash
   python -m src.inference
-
+```
 7. Running the Web Services (Docker)
 To run the API and dashboard locally using Docker Compose:
 
@@ -136,7 +138,7 @@ To run the API and dashboard locally using Docker Compose:
 | :--- | :--- | :--- |
 | **Streamlit Dashboard** | [http://localhost:8501](http://localhost:8501) | Interactive map risk viewer & SHAP diagnostics |
 | **FastAPI Swagger UI** | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI documentation & inference |
-
+```
 ---
 
 ## Key Notes on Methodology
