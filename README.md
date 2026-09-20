@@ -134,11 +134,11 @@ To run the API and dashboard locally using Docker Compose:
 
   ```bash
   docker-compose up --build
+```
 | Service | URL | Description |
 | :--- | :--- | :--- |
 | **Streamlit Dashboard** | [http://localhost:8501](http://localhost:8501) | Interactive map risk viewer & SHAP diagnostics |
 | **FastAPI Swagger UI** | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI documentation & inference |
-```
 ---
 
 ## Key Notes on Methodology
