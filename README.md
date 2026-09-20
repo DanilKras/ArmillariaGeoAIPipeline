@@ -1,70 +1,65 @@
 # Armillaria Pathogen Risk Assessment Pipeline
 
-This project is a geospatial machine learning pipeline designed to model and map potential infection risks of *Armillaria ostoyae* in forest areas, with an initial test focus on the Sopron / Lake Fertő region.
+This project is a geospatial machine learning pipeline designed to model and map potential infection risks of *Armillaria ostoyae* in forest ecosystems, with a target validation area in the Sopron / Lake Fertő region.
 
-The goal of the project is to explore cloud-native geospatial tools (STAC, Zarr) and practice spatial machine learning workflows using open environmental data.
+The goal is to demonstrate a production-ready, cloud-native GeoAI workflow utilizing STAC catalogs, Zarr cloud data stores, and spatial cross-validation to account for spatial autocorrelation.
 
 ---
 
 ## Overview
 
-The workflow automates data collection, environmental feature extraction, spatial validation, and map generation.
+The pipeline automates raw biodiversity data ingestion, cloud-based environmental feature extraction, spatial machine learning validation, regional raster inference, and interactive serving.
 
 ### Core Stages
 
-1. **Occurrence Data**  
-   Fetches *Armillaria ostoyae* observations from the GBIF API, filtering records with coordinate uncertainty ≤ 250 m.
-
-2. **Spatial Rarefaction**  
-   Thins presence points to a 1×1 km grid to reduce sampling clustering.
-
-3. **Pseudo‑Absence Sampling**  
-   Generates balanced synthetic absence points at least 5 km away from known presences using vectorized NumPy distance calculations.
-
-4. **Feature Extraction**  
-   - **Elevation and slope**: derived from the Copernicus 30 m DEM via Microsoft Planetary Computer STAC.  
-   - **Forest mask**: applied using ESA WorldCover (10 m).  
-   - **Bioclimatic variables**: BIO1, BIO4, BIO12, BIO15 computed from TerraClimate Zarr arrays.
-
-5. **Spatial Cross‑Validation**  
-   Evaluates an XGBoost model using `GroupKFold` on 150 km blocks to prevent spatial autocorrelation leakage. The block size was guided by an empirical semivariogram of elevation.
-
-6. **Inference & Serving**  
-   Produces a 30 m regional risk raster (GeoTIFF) and provides a local FastAPI backend with a Streamlit interface for point predictions.
+1. **Occurrence Ingestion:** Fetches verified *Armillaria ostoyae* presence records from the GBIF API, filtering for coordinate uncertainty $\le 250\text{ m}$.
+2. **Spatial Rarefaction:** Thins occurrences to a 1×1 km metric grid (EPSG:3035) to mitigate opportunistic citizen-science sampling clustering.
+3. **Pseudo-Absence Sampling:** Generates a balanced 1:1 synthetic absence dataset ($>5\text{ km}$ buffer from observed presences) using spatial indexing via `scipy.spatial.KDTree`.
+4. **Cloud Feature Store Extraction:**
+   - **Elevation:** Copernicus GLO-30 DEM (30 m) via Microsoft Planetary Computer STAC.
+   - **Land Cover Mask:** ESA WorldCover (10 m) mapped to identify forest canopy areas (Class 10).
+   - **Bioclimatic Predictors:** Long-term bioclimatic indices (`BIO1`, `BIO4`, `BIO12`, `BIO15`) streamed on demand from TerraClimate Zarr arrays.
+5. **Spatial Cross-Validation:** Evaluates an XGBoost classifier with 5-fold `GroupKFold` over 150 km geographic blocks (derived from elevation semivariogram sill analysis) to prevent spatial data leakage.
+6. **Inference & Serving:** Exports a high-resolution regional risk GeoTIFF raster (30 m) and serves point inferences and SHAP explainability via a FastAPI backend and a Streamlit dashboard.
 
 ---
 
 ## Project Structure
 
 ```text
-├── api/                            # FastAPI application
-│   ├── main.py                     # Prediction and feedback endpoints
-│   ├── schemas.py                  # Pydantic schemas
-│   └── Dockerfile
+├── api/                            # FastAPI backend
+│   ├── Dockerfile
+│   ├── main.py                     # Inference and field feedback endpoints
+│   ├── requirements.txt
+│   └── schemas.py                  # Pydantic data schemas
 ├── config/
-│   └── params.yaml                 # Configuration parameters
+│   └── params.yaml                 # Centralized pipeline configuration
 ├── dags/
-│   └── armillaria_pipeline_dag.py  # Airflow pipeline DAG
+│   └── armillaria_pipeline_dag.py  # Apache Airflow orchestration DAG
 ├── data/
-│   ├── 01_raw/                     # Raw downloaded points
-│   ├── 02_processed/               # Processed feature tables (Parquet)
-│   └── 03_results/                 # Output GeoTIFF and plots
-├── frontend/                       # Streamlit dashboard
-│   ├── app.py                      # Map UI and SHAP visualization
-│   └── Dockerfile
+│   ├── 01_raw/                     # Raw occurrence data (.gitkeep)
+│   ├── 02_processed/               # Thinning and feature Parquet tables (.gitkeep)
+│   └── 03_results/                 # Exported GeoTIFF risk rasters and plots (.gitkeep)
+├── frontend/                       # Streamlit web application
+│   ├── app.py                      # Interactive Leaflet map & SHAP diagnostic plots
+│   ├── Dockerfile
+│   └── requirements.txt
 ├── models/
-│   └── armillaria_spatial_xgb.json # Trained XGBoost model
+│   └── armillaria_spatial_xgb.json # Exported production XGBoost model
 ├── notebooks/
-│   └── 01_eda_armillaria.ipynb     # EDA and variogram analysis
-├── src/                            # Pipeline source code
-│   ├── data_extraction.py
-│   ├── data_processing.py
-│   ├── negative_sampling.py
-│   ├── feature_extraction.py
-│   ├── model_training.py
-│   └── inference.py
+│   └── 01_eda_armillaria.ipynb     # Spatial EDA, variogram, and sampling analysis
+├── src/                            # Pipeline modules
+│   ├── data_extraction.py          # GBIF API occurrence harvester
+│   ├── data_processing.py          # 1 km spatial rarefaction
+│   ├── negative_sampling.py        # KDTree ecological pseudo-absence generator
+│   ├── feature_extraction.py       # Planetary Computer DEM & Zarr bioclim extraction
+│   ├── model_training.py           # Spatial Block CV & XGBoost training
+│   └── inference.py                # Regional 30m GeoTIFF risk raster generation
+├── utils/
+│   └── config_loader.py            # Dynamic YAML configuration loader
 ├── docker-compose.yaml
-└── pyproject.toml
+├── pyproject.toml
+└── README.md
 ```
 
 ## Installation & Setup
@@ -101,30 +96,30 @@ uv run ruff format .
 
 You can run each stage of the pipeline sequentially:
 
-1. Fetch GBIF occurrences:
+1. Harvest GBIF occurrences:
    ```bash
    python -m src.data_extraction
-2. Thin occurrences to 1×1 km grid:
+2. Thin presences to 1x1 km grid:
 
   ```bash
   python -m src.data_processing
 ```
-3. Generate pseudo-absences:
+3. Sample balanced ecological pseudo-absences:
 
   ```bash
   python -m src.negative_sampling
 ```
-4. Extract DEM and TerraClimate features:
+4. Stream DEM and TerraClimate Zarr variables:
 
   ```bash
   python -m src.feature_extraction
 ```
-5. Train XGBoost model with Spatial CV:
+5. Train XGBoost model with 150 km Spatial Block CV:
 
   ```bash
   python -m src.model_training
 ```
-6. Generate regional 30m risk GeoTIFF:
+6. Generate 30m regional risk GeoTIFF raster:
 
   ```bash
   python -m src.inference
@@ -143,8 +138,8 @@ To run the API and dashboard locally using Docker Compose:
 
 ## Key Notes on Methodology
 
-* **Spatial Block Cross-Validation**: Standard random splits often lead to overly optimistic performance due to spatial autocorrelation. Using 150 km blocks ensures that validation folds are geographically separated from training folds.
-* **Ecological Limitations**: This project relies on presence-only data from citizen science (GBIF), which contains noticeable geographic observation bias (e.g., higher reporting density in Germany and Denmark). Pseudo-absences are generated purely based on spatial distance and should be refined with actual host-tree species distribution and soil characteristics in future work.
+* **Spatial Block Cross-Validation**: Standard random K-Fold cross-validation produces overoptimistic metric estimates when applied to spatial observations due to Tobler's First Law of Geography. Partitioning the study area into 150 km blocks (GroupKFold) ensures out-of-region generalization without spatial data leakage.
+* **Ecological Limitations**: Presence records derived from GBIF citizen science exhibit observation density bias toward Northern and Western Europe (e.g., high reporting rates in Germany and Denmark). While 1 km spatial rarefaction suppresses dense urban reporting clusters, model projections reflect realized ecological reporting niches.
 
 ---
 
