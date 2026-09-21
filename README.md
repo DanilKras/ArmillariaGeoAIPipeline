@@ -1,181 +1,148 @@
-# **Armillaria Pathogen Risk Assessment Pipeline**
+# Armillaria Pathogen Risk Assessment Pipeline
 
-This project is a geospatial machine learning pipeline designed to model and map potential infection risks of *Armillaria ostoyae* in forest areas, with an initial test focus on the Sopron / Lake Fertő region.
+This project is a geospatial machine learning pipeline designed to model and map potential infection risks of *Armillaria ostoyae* in forest ecosystems, with a target validation area in the Sopron / Lake Fertő region.
 
-&nbsp;
+The goal is to demonstrate a production-ready, cloud-native GeoAI workflow utilizing STAC catalogs, Zarr cloud data stores, and spatial cross-validation to account for spatial autocorrelation.
 
-I built this project to explore cloud-native geospatial tools (STAC, Zarr) and practice spatial machine learning workflows using open environmental data.
+---
 
-# **Overview**
+## Overview
 
-The workflow automates data collection, environmental feature extraction, spatial validation, and map generation:
+The pipeline automates raw biodiversity data ingestion, cloud-based environmental feature extraction, spatial machine learning validation, regional raster inference, and interactive serving.
 
-&nbsp;
+### Core Stages
 
-1. **Occurrence Data**: Fetches *Armillaria ostoyae* observations from the GBIF API, filtering records with coordinate uncertainty \<= 250 m.  
-2. **Spatial Rarefaction**: Thins presence points to a 1x1 km grid to reduce sampling clustering.  
-3. **Pseudo-Absence Sampling**: Generates balanced synthetic absence points at least 5 km away from known presences using vectorized NumPy distance calculations.  
-4. **Feature Extraction**:  
-   * Elevation and slope derived from the Copernicus 30m DEM via Microsoft Planetary Computer STAC.  
-   * Forest mask applied using ESA WorldCover (10m).  
-   * Bioclimatic variables (BIO1, BIO4, BIO12, BIO15) computed from TerraClimate Zarr arrays.  
-5. **Spatial Cross-Validation**: Evaluates an XGBoost model using GroupKFold on 150 km blocks to prevent spatial autocorrelation leakage (the block size was guided by an empirical semivariogram of elevation).  
-6. **Inference & Serving**: Produces a 30m regional risk raster (GeoTIFF) and provides a local FastAPI backend with a Streamlit interface for point predictions.
+1. **Occurrence Ingestion:** Fetches verified *Armillaria ostoyae* presence records from the GBIF API, filtering for coordinate uncertainty $\le 250\text{ m}$.
+2. **Spatial Rarefaction:** Thins occurrences to a 1×1 km metric grid (EPSG:3035) to mitigate opportunistic citizen-science sampling clustering.
+3. **Pseudo-Absence Sampling:** Generates a balanced 1:1 synthetic absence dataset ($>5\text{ km}$ buffer from observed presences) using spatial indexing via `scipy.spatial.KDTree`.
+4. **Cloud Feature Store Extraction:**
+   - **Elevation:** Copernicus GLO-30 DEM (30 m) via Microsoft Planetary Computer STAC.
+   - **Land Cover Mask:** ESA WorldCover (10 m) mapped to identify forest canopy areas (Class 10).
+   - **Bioclimatic Predictors:** Long-term bioclimatic indices (`BIO1`, `BIO4`, `BIO12`, `BIO15`) streamed on demand from TerraClimate Zarr arrays.
+5. **Spatial Cross-Validation:** Evaluates an XGBoost classifier with 5-fold `GroupKFold` over 150 km geographic blocks (derived from elevation semivariogram sill analysis) to prevent spatial data leakage.
+6. **Inference & Serving:** Exports a high-resolution regional risk GeoTIFF raster (30 m) and serves point inferences and SHAP explainability via a FastAPI backend and a Streamlit dashboard.
 
-# **Project Structure**
+---
 
+## Project Structure
 
-├── api/                             \# FastAPI application  
-│   ├── main.py                      \# Prediction and feedback endpoints  
-│   ├── schemas.py                   \# Pydantic schemas  
-│   └── Dockerfile  
-├── config/  
-│   └── params.yaml                  \# Configuration parameters  
-├── dags/  
-│   └── armillaria\_pipeline\_dag.py   \# Airflow pipeline DAG  
-├── data/  
-│   ├── 01\_raw/                      \# Raw downloaded points  
-│   ├── 02\_processed/                \# Processed feature tables (Parquet)  
-│   └── 03\_results/                  \# Output GeoTIFF and plots  
-├── frontend/                        \# Streamlit dashboard  
-│   ├── app.py                       \# Map UI and SHAP visualization  
-│   └── Dockerfile  
-├── models/  
-│   └── armillaria\_spatial\_xgb.json  \# Trained XGBoost model  
-├── notebooks/  
-│   └── 01\_eda\_armillaria.ipynb      \# EDA and variogram analysis  
-├── src/                             \# Pipeline source code  
-│   ├── data\_extraction.py  
-│   ├── data\_processing.py  
-│   ├── negative\_sampling.py  
-│   ├── feature\_extraction.py  
-│   ├── model\_training.py  
-│   └── inference.py  
-├── docker-compose.yaml  
-└── pyproject.toml
+```text
+├── api/                            # FastAPI backend
+│   ├── Dockerfile
+│   ├── main.py                     # Inference and field feedback endpoints
+│   ├── requirements.txt
+│   └── schemas.py                  # Pydantic data schemas
+├── config/
+│   └── params.yaml                 # Centralized pipeline configuration
+├── dags/
+│   └── armillaria_pipeline_dag.py  # Apache Airflow orchestration DAG
+├── data/
+│   ├── 01_raw/                     # Raw occurrence data (.gitkeep)
+│   ├── 02_processed/               # Thinning and feature Parquet tables (.gitkeep)
+│   └── 03_results/                 # Exported GeoTIFF risk rasters and plots (.gitkeep)
+├── frontend/                       # Streamlit web application
+│   ├── app.py                      # Interactive Leaflet map & SHAP diagnostic plots
+│   ├── Dockerfile
+│   └── requirements.txt
+├── models/
+│   └── armillaria_spatial_xgb.json # Exported production XGBoost model
+├── notebooks/
+│   └── 01_eda_armillaria.ipynb     # Spatial EDA, variogram, and sampling analysis
+├── src/                            # Pipeline modules
+│   ├── data_extraction.py          # GBIF API occurrence harvester
+│   ├── data_processing.py          # 1 km spatial rarefaction
+│   ├── negative_sampling.py        # KDTree ecological pseudo-absence generator
+│   ├── feature_extraction.py       # Planetary Computer DEM & Zarr bioclim extraction
+│   ├── model_training.py           # Spatial Block CV & XGBoost training
+│   └── inference.py                # Regional 30m GeoTIFF risk raster generation
+├── utils/
+│   └── config_loader.py            # Dynamic YAML configuration loader
+├── docker-compose.yaml
+├── pyproject.toml
+└── README.md
+```
 
-&nbsp;
+## Installation & Setup
 
-\#\# Installation & Setup
+### Requirements
 
-&nbsp;
+- Python 3.11+
+- `uv` or `pip`
 
-\#\#\# Requirements
+### Step 1: Set Up Virtual Environment
 
-&nbsp;
+**Using `uv`:**
 
-\*   Python 3.11+
-
-&nbsp;
-
-\*   uv or pip
-
-&nbsp;
-
-\#\#\# Step 1: Set up virtual environment
-
-&nbsp;
-
-Using \*\*uv\*\*:
-
-&nbsp;
-
-\`\`\`bash
-
-&nbsp;
-
+```bash
 uv venv .venv
-
-&nbsp;
-
-source .venv/bin/activate  \# On Windows: .venv\\Scripts\\activate
-
-&nbsp;
-
+source .venv/bin/activate   # On Windows: .venv\Scripts\activate
 uv sync
+```
+**Or using standard `pip`:**
 
-&nbsp;
+```bash
+python -m venv .venv
+source .venv/bin/activate   # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+### Step 2: Code Quality Check
 
-Or using standard **pip**:python \-m venv .venv
-
-&nbsp;
-
-source .venv/bin/activate  \# On Windows: .venv\\Scripts\\activate
-
-&nbsp;
-
-pip install \-r requirements.txt
-
-## **Step 2: Code quality check**
-
-uv run ruff check . \--fix
-
-&nbsp;
-
+```bash
+uv run ruff check . --fix
 uv run ruff format .
+```
 
-# **Running the Pipeline**
+## Running the Pipeline
 
-You can run each stage of the pipeline sequentially:\# 1\. Fetch GBIF occurrences
+You can run each stage of the pipeline sequentially:
 
-&nbsp;
+1. Harvest GBIF occurrences:
+   ```bash
+   python -m src.data_extraction
+2. Thin presences to 1x1 km grid:
 
-python \-m src.data\_extraction
+  ```bash
+  python -m src.data_processing
+```
+3. Sample balanced ecological pseudo-absences:
 
-&nbsp;
+  ```bash
+  python -m src.negative_sampling
+```
+4. Stream DEM and TerraClimate Zarr variables:
 
-\# 2\. Thin occurrences to 1x1 km grid
+  ```bash
+  python -m src.feature_extraction
+```
+5. Train XGBoost model with 150 km Spatial Block CV:
 
-&nbsp;
+  ```bash
+  python -m src.model_training
+```
+6. Generate 30m regional risk GeoTIFF raster:
 
-python \-m src.data\_processing
+  ```bash
+  python -m src.inference
+```
+7. Running the Web Services (Docker)
+To run the API and dashboard locally using Docker Compose:
 
-&nbsp;
+  ```bash
+  docker-compose up --build
+```
+| Service | URL | Description |
+| :--- | :--- | :--- |
+| **Streamlit Dashboard** | [http://localhost:8501](http://localhost:8501) | Interactive map risk viewer & SHAP diagnostics |
+| **FastAPI Swagger UI** | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI documentation & inference |
+---
 
-\# 3\. Generate pseudo-absences
+## Key Notes on Methodology
 
-&nbsp;
+* **Spatial Block Cross-Validation**: Standard random K-Fold cross-validation produces overoptimistic metric estimates when applied to spatial observations due to Tobler's First Law of Geography. Partitioning the study area into 150 km blocks (GroupKFold) ensures out-of-region generalization without spatial data leakage.
+* **Ecological Limitations**: Presence records derived from GBIF citizen science exhibit observation density bias toward Northern and Western Europe (e.g., high reporting rates in Germany and Denmark). While 1 km spatial rarefaction suppresses dense urban reporting clusters, model projections reflect realized ecological reporting niches.
 
-python \-m src.negative\_sampling
+---
 
-&nbsp;
+## License
 
-\# 4\. Extract DEM and TerraClimate features
-
-&nbsp;
-
-python \-m src.feature\_extraction
-
-&nbsp;
-
-\# 5\. Train XGBoost model with Spatial CV
-
-&nbsp;
-
-python \-m src.model\_training
-
-&nbsp;
-
-\# 6\. Generate regional 30m risk GeoTIFF
-
-&nbsp;
-
-python \-m src.inference
-
-# **Running the Web Services (Docker)**
-
-To run the API and dashboard locally using Docker Compose:docker-compose up \--build
-
-&nbsp;
-
-* **Streamlit Interface**: http://localhost:8501  
-* **FastAPI Documentation**: http://localhost:8000/docs
-
-# **Key Notes on Methodology**
-
-* **Spatial Block Cross-Validation**: Standard random splits often lead to overly optimistic performance due to spatial autocorrelation. Using 150 km blocks ensures that validation folds are geographically separated from training folds.  
-* **Ecological Limitations**: This project relies on presence-only data from citizen science (GBIF), which contains noticeable geographic observation bias (e.g., higher reporting density in Germany and Denmark). Pseudo-absences are generated purely based on spatial distance and should be refined with actual host-tree species distribution and soil characteristics in future work.
-
-# **License**
-
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE).
