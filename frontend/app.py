@@ -102,10 +102,11 @@ top_col1, top_col2 = st.columns([2, 1])
 
 with top_col1:
     m = folium.Map(
-        location=[st.session_state.target_lat, st.session_state.target_lon],
+        location=st.session_state.map_center,
         zoom_start=st.session_state.map_zoom,
         tiles=None,
     )
+
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         attr="Esri",
@@ -133,7 +134,7 @@ with top_col1:
         m,
         height=400,
         use_container_width=True,
-        returned_objects=["last_clicked"],
+        returned_objects=["last_clicked", "center", "zoom"],
         key="armillaria_leaflet_map",
     )
 
@@ -147,6 +148,15 @@ with top_col1:
         ):
             st.session_state.target_lat = clicked_lat
             st.session_state.target_lon = clicked_lon
+
+            if map_data.get("center"):
+                st.session_state.map_center = [
+                    map_data["center"]["lat"],
+                    map_data["center"]["lng"],
+                ]
+            if map_data.get("zoom"):
+                st.session_state.map_zoom = map_data["zoom"]
+
             st.rerun()
 
     with st.form("field_form"):
