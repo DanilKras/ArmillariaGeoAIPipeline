@@ -159,28 +159,6 @@ with top_col1:
 
             st.rerun()
 
-    with st.form("field_form"):
-        st.markdown("#### Field Validation")
-        tree_status = st.selectbox("Observed Status", ["Healthy (0)", "Infected (1)"])
-        notes = st.text_input("Field Notes (e.g., Pinus sylvestris roots)")
-
-        if st.form_submit_button("Submit Ground Truth"):
-            status_val = 1 if "1" in tree_status else 0
-            payload = {
-                "lat": st.session_state.target_lat,
-                "lon": st.session_state.target_lon,
-                "status": status_val,
-                "notes": notes,
-            }
-            try:
-                res = requests.post(FEEDBACK_URL, json=payload)
-                if res.status_code == 200:
-                    st.success("Feedback saved to database!")
-                else:
-                    st.error(f"Failed to submit: {res.text}")
-            except Exception as ex:
-                st.error(f"Cannot reach backend: {ex}")
-
 with top_col2:
     st.subheader("Spatial Analysis")
     st.info(
