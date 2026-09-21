@@ -85,12 +85,6 @@ python -m venv .venv
 source .venv/bin/activate   # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
-### Step 2: Code Quality Check
-
-```bash
-uv run ruff check . --fix
-uv run ruff format .
-```
 
 ## Running the Pipeline
 
