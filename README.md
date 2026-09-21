@@ -129,7 +129,10 @@ To run the API and dashboard locally using Docker Compose:
 | **Streamlit Dashboard** | [http://localhost:8501](http://localhost:8501) | Interactive map risk viewer & SHAP diagnostics |
 | **FastAPI Swagger UI** | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI documentation & inference |
 ---
-
+## Link to demo
+```bash
+https://drive.google.com/file/d/1DjQsjuLt-Swd29_IDs9Ne9P1Wh4DIO49/view?usp=sharing
+```
 ## Key Notes on Methodology
 
 * **Spatial Block Cross-Validation**: Standard random K-Fold cross-validation produces overoptimistic metric estimates when applied to spatial observations due to Tobler's First Law of Geography. Partitioning the study area into 150 km blocks (GroupKFold) ensures out-of-region generalization without spatial data leakage.
