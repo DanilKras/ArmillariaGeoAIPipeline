@@ -101,38 +101,53 @@ def plot_shap_bar(shap_dict):
 top_col1, top_col2 = st.columns([2, 1])
 
 with top_col1:
-    m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
-
-    folium.TileLayer("OpenStreetMap", name="Topography").add_to(m)
+    m = folium.Map(
+        location=[st.session_state.target_lat, st.session_state.target_lon],
+        zoom_start=st.session_state.map_zoom,
+        tiles=None,
+    )
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         attr="Esri",
         name="Satellite (Esri)",
         overlay=False,
+        control=True,
     ).add_to(m)
-    folium.LayerControl().add_to(m)
+
+    folium.TileLayer(
+        tiles="OpenStreetMap",
+        name="Topography (OSM)",
+        overlay=False,
+        control=True,
+    ).add_to(m)
+
+    folium.LayerControl(position="topright", collapsed=False).add_to(m)
 
     folium.Marker(
         [st.session_state.target_lat, st.session_state.target_lon],
+        popup=f"Lat: {st.session_state.target_lat:.4f}, Lon: {st.session_state.target_lon:.4f}",
         icon=folium.Icon(color="red", icon="info-sign"),
     ).add_to(m)
 
-    map_data = st_folium(m, height=380, use_container_width=True)
+    map_data = st_folium(
+        m,
+        height=400,
+        use_container_width=True,
+        returned_objects=["last_clicked"],
+        key="armillaria_leaflet_map",
+    )
 
-    if map_data:
-        if map_data.get("center"):
-            st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
-        if map_data.get("zoom"):
-            st.session_state.map_zoom = map_data["zoom"]
+    if map_data and map_data.get("last_clicked"):
+        clicked_lat = map_data["last_clicked"]["lat"]
+        clicked_lon = map_data["last_clicked"]["lng"]
 
-        if map_data.get("last_clicked"):
-            new_lat = map_data["last_clicked"]["lat"]
-            new_lon = map_data["last_clicked"]["lng"]
-
-            if new_lat != st.session_state.target_lat or new_lon != st.session_state.target_lon:
-                st.session_state.target_lat = new_lat
-                st.session_state.target_lon = new_lon
-                st.rerun()
+        if (
+            abs(clicked_lat - st.session_state.target_lat) > 1e-5
+            or abs(clicked_lon - st.session_state.target_lon) > 1e-5
+        ):
+            st.session_state.target_lat = clicked_lat
+            st.session_state.target_lon = clicked_lon
+            st.rerun()
 
     with st.form("field_form"):
         st.markdown("#### Field Validation")
