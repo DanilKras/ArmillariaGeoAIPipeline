@@ -24,7 +24,6 @@ airflow.db
 airflow.cfg
 
 # --- Data & Models (CRITICAL) ---
-# Игнорируем всё содержимое папок с данными, кроме файлов .gitkeep (чтобы папки сохранились в git)
 data/01_raw/*
 !data/01_raw/.gitkeep
 data/02_processed/*

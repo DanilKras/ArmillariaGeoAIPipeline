@@ -30,7 +30,7 @@ def process_and_thin_data() -> str:
     df = df.rename(columns={c: rename_map[c.lower()] for c in df.columns if c.lower() in rename_map})
 
     df = df.dropna(subset=["lon", "lat"])
-ь)
+
     if "coordinate_uncertainty_m" in df.columns:
         df = df[(df["coordinate_uncertainty_m"].isna()) | (df["coordinate_uncertainty_m"] <= 250)]
 
