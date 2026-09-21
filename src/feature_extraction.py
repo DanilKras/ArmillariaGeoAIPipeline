@@ -120,7 +120,7 @@ def run_advanced_feature_extraction() -> pd.DataFrame:
 
     extracted = ds_clim.sel(lat=lats_da, lon=lons_da, method="nearest").compute()
 
-    tmean = (extracted["tmax"] + extracted["tmin"]) * 0.5 * 0.1
+    tmean = (extracted["tmax"] + extracted["tmin"]) * 0.5
     ppt = extracted["ppt"]
 
     df["bio1_mean_temp"] = tmean.mean(dim="time").values
