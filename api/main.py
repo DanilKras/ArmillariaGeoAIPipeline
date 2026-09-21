@@ -41,6 +41,15 @@ class GroundTruthPoint(BaseModel):
 
 app_state = {}
 
+FEATURE_COLUMNS = [
+    "elevation",
+    "landcover_class",
+    "bio1_mean_temp",
+    "bio4_temp_seasonality",
+    "bio12_annual_precip",
+    "bio15_precip_seasonality",
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -100,24 +109,29 @@ def extract_climate_bioclim(lat: float, lon: float, catalog) -> tuple:
     sas_params = dict(urllib.parse.parse_qsl(parsed.query))
 
     store = fsspec.get_mapper(base_endpoint, params=sas_params)
-    ds = xr.open_zarr(store, consolidated=True)
+    ds = xr.open_zarr(store, consolidated=True, mask_and_scale=False)
     ds_clim = ds[["tmax", "tmin", "ppt"]].sel(time=slice("2011-01-01", "2020-12-31"))
 
+    lat_da = xr.DataArray([lat], dims="points")
+    lon_da = xr.DataArray([lon], dims="points")
+
     with dask.config.set(scheduler="synchronous"):
-        pt_clim = ds_clim.sel(lat=lat, lon=lon, method="nearest").compute()
+        pt_clim = ds_clim.sel(lat=lat_da, lon=lon_da, method="nearest").compute()
 
     tmean = (pt_clim["tmax"] + pt_clim["tmin"]) * 0.5 * 0.1
     ppt = pt_clim["ppt"]
 
-    bio1 = float(tmean.mean(dim="time").values)
+    bio1 = float(tmean.mean(dim="time").values.squeeze())
     monthly_tmean = tmean.groupby("time.month").mean(dim="time")
-    bio4 = float(monthly_tmean.std(dim="month").values) * 100.0
+    bio4 = float(monthly_tmean.std(dim="month").values.squeeze()) * 100.0
 
-    bio12 = float(ppt.groupby("time.year").sum(dim="time").mean(dim="year").values)
+    annual_ppt = ppt.groupby("time.year").sum(dim="time")
+    bio12 = float(annual_ppt.mean(dim="year").values.squeeze())
+
     monthly_ppt = ppt.groupby("time.month").mean(dim="time")
     ppt_mean = monthly_ppt.mean(dim="month")
     ppt_std = monthly_ppt.std(dim="month")
-    bio15 = float((ppt_std / (ppt_mean + 1e-5)).values) * 100.0
+    bio15 = float(((ppt_std / (ppt_mean + 1e-5)) * 100.0).values.squeeze())
 
     return bio1, bio4, bio12, bio15
 
@@ -154,29 +168,23 @@ async def predict_risk(request: InferenceRequest):
         bio1, bio4, bio12, bio15 = extract_climate_bioclim(request.lat, request.lon, catalog)
         lc = extract_landcover(request.lat, request.lon, catalog)
 
-        input_data = pd.DataFrame(
-            [
-                {
-                    "elevation": elev,
-                    "landcover_class": lc,
-                    "bio1_mean_temp": bio1,
-                    "bio4_temp_seasonality": bio4,
-                    "bio12_annual_precip": bio12,
-                    "bio15_precip_seasonality": bio15,
-                }
-            ]
-        )
+        input_dict = {
+            "elevation": elev,
+            "landcover_class": lc,
+            "bio1_mean_temp": bio1,
+            "bio4_temp_seasonality": bio4,
+            "bio12_annual_precip": bio12,
+            "bio15_precip_seasonality": bio15,
+        }
+        input_data = pd.DataFrame([input_dict])[FEATURE_COLUMNS]
 
         prob = float(model.predict_proba(input_data)[0][1])
         level = "High" if prob >= 0.66 else "Medium" if prob >= 0.33 else "Low"
 
-        shap_vals = explainer.shap_values(input_data)
-        if isinstance(shap_vals, list):
-            vals = shap_vals[1][0]
-        else:
-            vals = shap_vals[0]
+        shap_vals = explainer(input_data)
+        vals = shap_vals.values[0]
 
-        shap_dict = {col: float(val) for col, val in zip(input_data.columns, vals)}
+        shap_dict = {col: float(val) for col, val in zip(FEATURE_COLUMNS, vals)}
 
         return InferenceResponse(
             risk_probability=prob,
