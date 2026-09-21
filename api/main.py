@@ -118,7 +118,7 @@ def extract_climate_bioclim(lat: float, lon: float, catalog) -> tuple:
     with dask.config.set(scheduler="synchronous"):
         pt_clim = ds_clim.sel(lat=lat_da, lon=lon_da, method="nearest").compute()
 
-    tmean = (pt_clim["tmax"] + pt_clim["tmin"]) * 0.5 * 0.1
+    tmean = (pt_clim["tmax"] + pt_clim["tmin"]) * 0.5
     ppt = pt_clim["ppt"]
 
     bio1 = float(tmean.mean(dim="time").values.squeeze())
