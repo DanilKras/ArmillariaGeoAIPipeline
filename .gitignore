@@ -23,7 +23,7 @@ logs/
 airflow.db
 airflow.cfg
 
-# --- Data & Models (CRITICAL) ---
+# --- Data & Models ---
 data/01_raw/*
 !data/01_raw/.gitkeep
 data/02_processed/*
