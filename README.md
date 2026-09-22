@@ -131,7 +131,7 @@ To run the API and dashboard locally using Docker Compose:
 ---
 ## Link to demo
 ```bash
-https://drive.google.com/file/d/1DjQsjuLt-Swd29_IDs9Ne9P1Wh4DIO49/view?usp=sharing
+[Project Demonstration](https://drive.google.com/file/d/1qoOQKh6-J5Bo6bT5EiugL-U74ZHSM_zP/view?usp=sharing)
 ```
 ## Key Notes on Methodology
 
