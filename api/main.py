@@ -1,10 +1,8 @@
 import os
-import sys
 import urllib.parse
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import dask
 import fsspec
 import pandas as pd
 import planetary_computer
@@ -17,8 +15,6 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from pystac_client.stac_api_io import StacApiIO
 
-sys.modules["distributed"] = None
-
 
 class InferenceRequest(BaseModel):
     lat: float = Field(..., description="Latitude in WGS84", ge=-90, le=90)
@@ -30,13 +26,6 @@ class InferenceResponse(BaseModel):
     risk_level: str
     extracted_features: dict
     shap_values: dict
-
-
-class GroundTruthPoint(BaseModel):
-    lat: float
-    lon: float
-    status: int
-    notes: str = ""
 
 
 app_state = {}
@@ -90,7 +79,11 @@ def extract_elevation(lat: float, lon: float, catalog) -> float:
         return 0.0
 
     dem_href = items_dem[0].assets["data"].href
-    env_kwargs = {"GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR", "GDAL_HTTP_UNSAFESSL": "YES"}
+    env_kwargs = {
+        "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+        "GDAL_HTTP_UNSAFESSL": "YES",
+        "GDAL_HTTP_TIMEOUT": "10",
+    }
 
     with rasterio.Env(**env_kwargs):
         with rasterio.open(dem_href) as src:
@@ -109,14 +102,13 @@ def extract_climate_bioclim(lat: float, lon: float, catalog) -> tuple:
     sas_params = dict(urllib.parse.parse_qsl(parsed.query))
 
     store = fsspec.get_mapper(base_endpoint, params=sas_params)
-    ds = xr.open_zarr(store, consolidated=True, mask_and_scale=False)
+    ds = xr.open_zarr(store, consolidated=True)
     ds_clim = ds[["tmax", "tmin", "ppt"]].sel(time=slice("2011-01-01", "2020-12-31"))
 
     lat_da = xr.DataArray([lat], dims="points")
     lon_da = xr.DataArray([lon], dims="points")
 
-    with dask.config.set(scheduler="synchronous"):
-        pt_clim = ds_clim.sel(lat=lat_da, lon=lon_da, method="nearest").compute()
+    pt_clim = ds_clim.sel(lat=lat_da, lon=lon_da, method="nearest").compute()
 
     tmean = (pt_clim["tmax"] + pt_clim["tmin"]) * 0.5
     ppt = pt_clim["ppt"]
@@ -145,7 +137,11 @@ def extract_landcover(lat: float, lon: float, catalog) -> float:
         return 40.0
 
     map_href = items[0].assets["map"].href
-    env_kwargs = {"GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR", "GDAL_HTTP_UNSAFESSL": "YES"}
+    env_kwargs = {
+        "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+        "GDAL_HTTP_UNSAFESSL": "YES",
+        "GDAL_HTTP_TIMEOUT": "10",
+    }
 
     with rasterio.Env(**env_kwargs):
         with rasterio.open(map_href) as src:
@@ -155,7 +151,7 @@ def extract_landcover(lat: float, lon: float, catalog) -> float:
 
 
 @app.post("/predict", response_model=InferenceResponse)
-async def predict_risk(request: InferenceRequest):
+def predict_risk(request: InferenceRequest):
     model = app_state.get("model")
     explainer = app_state.get("explainer")
     catalog = app_state.get("catalog")
@@ -176,7 +172,9 @@ async def predict_risk(request: InferenceRequest):
             "bio12_annual_precip": bio12,
             "bio15_precip_seasonality": bio15,
         }
-        input_data = pd.DataFrame([input_dict])[FEATURE_COLUMNS]
+
+        booster_feats = model.get_booster().feature_names or FEATURE_COLUMNS
+        input_data = pd.DataFrame([input_dict])[booster_feats]
 
         prob = float(model.predict_proba(input_data)[0][1])
         level = "High" if prob >= 0.66 else "Medium" if prob >= 0.33 else "Low"
@@ -184,7 +182,7 @@ async def predict_risk(request: InferenceRequest):
         shap_vals = explainer(input_data)
         vals = shap_vals.values[0]
 
-        shap_dict = {col: float(val) for col, val in zip(FEATURE_COLUMNS, vals)}
+        shap_dict = {col: float(val) for col, val in zip(booster_feats, vals)}
 
         return InferenceResponse(
             risk_probability=prob,
@@ -201,28 +199,3 @@ async def predict_risk(request: InferenceRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/feedback")
-def log_ground_truth(point: GroundTruthPoint):
-    csv_path = Path("data/01_raw/field_feedback.csv")
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
-
-    new_data = pd.DataFrame(
-        [
-            {
-                "lat": point.lat,
-                "lon": point.lon,
-                "target": point.status,
-                "notes": point.notes,
-                "timestamp": pd.Timestamp.now(),
-            }
-        ]
-    )
-
-    if csv_path.exists():
-        new_data.to_csv(csv_path, mode="a", header=False, index=False)
-    else:
-        new_data.to_csv(csv_path, mode="w", header=True, index=False)
-
-    return {"status": "success", "message": "Field observation recorded successfully."}
