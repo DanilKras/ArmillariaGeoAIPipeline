@@ -130,9 +130,9 @@ To run the API and dashboard locally using Docker Compose:
 | **FastAPI Swagger UI** | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI documentation & inference |
 ---
 ## Link to demo
-```bash
+
 [Project Demonstration](https://drive.google.com/file/d/1qoOQKh6-J5Bo6bT5EiugL-U74ZHSM_zP/view?usp=sharing)
-```
+
 ## Key Notes on Methodology
 
 * **Spatial Block Cross-Validation**: Standard random K-Fold cross-validation produces overoptimistic metric estimates when applied to spatial observations due to Tobler's First Law of Geography. Partitioning the study area into 150 km blocks (GroupKFold) ensures out-of-region generalization without spatial data leakage.
