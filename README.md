@@ -140,6 +140,15 @@ To run the API and dashboard locally using Docker Compose:
 
 ---
 
+## Future Roadmap (MSc Thesis Integration)
+
+The current pipeline establishes a robust Macro-Scale foundation for automated spatial feature extraction, environmental modeling, and rigorous block cross-validation. As part of my upcoming MSc thesis research, this architecture is being actively expanded into a hybrid **Multi-Scale GeoAI Framework**.
+
+Upcoming developments focus on the **Micro-Scale** level, specifically targeting:
+* **LiDAR & 3D Canopy Integration:** Ingesting UAV-based LiDAR point clouds and Canopy Height Models (CHM) to extract high-resolution structural features and perform precise single-tree segmentation.
+* **Deep Learning Spatial Encoders:** Implementing PyTorch-based architectures to process co-registered Sentinel-1 (SAR) and Sentinel-2 patches for localized canopy health assessment.
+* **Hybrid Validation:** Fusing micro-scale neural embeddings with the existing macro-scale Gradient Boosting (XGBoost/CatBoost) pipeline to enhance localized vulnerability predictions and 3D crown validation.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
