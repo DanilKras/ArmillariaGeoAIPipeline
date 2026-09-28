@@ -49,12 +49,15 @@ The pipeline automates raw biodiversity data ingestion, cloud-based environmenta
 ├── notebooks/
 │   └── 01_eda_armillaria.ipynb     # Spatial EDA, variogram, and sampling analysis
 ├── src/                            # Pipeline modules
-│   ├── data_extraction.py          # GBIF API occurrence harvester
-│   ├── data_processing.py          # 1 km spatial rarefaction
-│   ├── negative_sampling.py        # KDTree ecological pseudo-absence generator
-│   ├── feature_extraction.py       # Planetary Computer DEM & Zarr bioclim extraction
-│   ├── model_training.py           # Spatial Block CV & XGBoost training
-│   └── inference.py                # Regional 30m GeoTIFF risk raster generation
+│   ├── macro/
+│   │   ├── data_extraction.py          # GBIF API occurrence harvester
+│   │   ├── data_processing.py          # 1 km spatial rarefaction
+│   │   ├── negative_sampling.py        # KDTree ecological pseudo-absence generator
+│   │   ├── feature_extraction.py       # Planetary Computer DEM & Zarr bioclim extraction
+│   │   ├── model_training.py           # Spatial Block CV & XGBoost training
+│   │   └── inference.py                # Regional 30m GeoTIFF risk raster generation
+│   └── micro/
+│   │   ├── lidar_processor.py          # Micro-Scale LiDAR & 3D Point Cloud Processing
 ├── utils/
 │   └── config_loader.py            # Dynamic YAML configuration loader
 ├── docker-compose.yaml
@@ -92,31 +95,31 @@ You can run each stage of the pipeline sequentially:
 
 1. Harvest GBIF occurrences:
    ```bash
-   python -m src.data_extraction
+   python -m src.macro.data_extraction
 2. Thin presences to 1x1 km grid:
 
   ```bash
-  python -m src.data_processing
+  python -m src.macro.data_processing
 ```
 3. Sample balanced ecological pseudo-absences:
 
   ```bash
-  python -m src.negative_sampling
+  python -m src.macro.negative_sampling
 ```
 4. Stream DEM and TerraClimate Zarr variables:
 
   ```bash
-  python -m src.feature_extraction
+  python -m src.macro.feature_extraction
 ```
 5. Train XGBoost model with 150 km Spatial Block CV:
 
   ```bash
-  python -m src.model_training
+  python -m src.macro.model_training
 ```
 6. Generate 30m regional risk GeoTIFF raster:
 
   ```bash
-  python -m src.inference
+  python -m src.macro.inference
 ```
 7. Running the Web Services (Docker)
 To run the API and dashboard locally using Docker Compose:

@@ -8,12 +8,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-from src.data_extraction import fetch_gbif_occurrences
-from src.data_processing import process_and_thin_data
-from src.feature_extraction import run_advanced_feature_extraction
-from src.inference import generate_risk_map
-from src.model_training import train_spatial_sdm
-from src.negative_sampling import generate_ecological_pseudo_absences
+from src.macro.data_extraction import fetch_gbif_occurrences
+from src.macro.data_processing import process_and_thin_data
+from src.macro.feature_extraction import run_advanced_feature_extraction
+from src.macro.inference import generate_risk_map
+from src.macro.model_training import train_spatial_sdm
+from src.macro.negative_sampling import generate_ecological_pseudo_absences
 
 default_args = {
     "owner": "danil",
