@@ -1,7 +1,6 @@
 import os
 import urllib.parse
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import fsspec
 import pandas as pd

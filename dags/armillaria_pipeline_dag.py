@@ -36,7 +36,6 @@ default_args = {
     tags=["geoai", "species-distribution", "xgboost", "planetary-computer"],
 )
 def armillaria_geoai_dag():
-
     @task(task_id="extract_gbif_occurrences")
     def task_extract():
         fetch_gbif_occurrences()

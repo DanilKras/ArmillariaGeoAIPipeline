@@ -16,7 +16,7 @@ paths:
   eda_distribution_plot: "data/03_results/figures/clean_presence_distribution.png"
 
 spatial:
-  bbox: [16.45, 47.55, 16.70, 47.75]
+  bbox: [ 16.45, 47.55, 16.70, 47.75 ]
   crs_wgs84: "EPSG:4326"
   crs_projected: "EPSG:3035"
   block_size_meters: 150000
