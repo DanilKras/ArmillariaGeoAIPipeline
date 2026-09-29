@@ -125,8 +125,8 @@ def run_advanced_feature_extraction() -> pd.DataFrame:
 
     df["bio1_mean_temp"] = tmean.mean(dim="time").values
     df["bio4_temp_seasonality"] = (
-                                      tmean.groupby("time.month").mean(dim="time").std(dim="month").values
-                                  ) * 100
+        tmean.groupby("time.month").mean(dim="time").std(dim="month").values
+    ) * 100
 
     annual_ppt = ppt.groupby("time.year").sum(dim="time")
     df["bio12_annual_precip"] = annual_ppt.mean(dim="year").values

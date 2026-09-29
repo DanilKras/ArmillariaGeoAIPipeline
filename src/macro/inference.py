@@ -144,16 +144,16 @@ def generate_risk_map() -> None:
 
     Path(output_tif).parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(
-            output_tif,
-            "w",
-            driver="GTiff",
-            height=dem_shape[0],
-            width=dem_shape[1],
-            count=1,
-            dtype=np.float32,
-            crs=dem_crs,
-            transform=transform,
-            nodata=-9999.0,
+        output_tif,
+        "w",
+        driver="GTiff",
+        height=dem_shape[0],
+        width=dem_shape[1],
+        count=1,
+        dtype=np.float32,
+        crs=dem_crs,
+        transform=transform,
+        nodata=-9999.0,
     ) as dst:
         dst.write(risk_matrix, 1)
 

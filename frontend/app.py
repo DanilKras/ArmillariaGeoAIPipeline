@@ -224,8 +224,8 @@ with top_col1:
         clicked_lon = map_data["last_clicked"]["lng"]
 
         if (
-                abs(clicked_lat - st.session_state.target_lat) > 1e-5
-                or abs(clicked_lon - st.session_state.target_lon) > 1e-5
+            abs(clicked_lat - st.session_state.target_lat) > 1e-5
+            or abs(clicked_lon - st.session_state.target_lon) > 1e-5
         ):
             st.session_state.target_lat = clicked_lat
             st.session_state.target_lon = clicked_lon

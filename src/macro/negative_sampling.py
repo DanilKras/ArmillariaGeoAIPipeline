@@ -9,9 +9,9 @@ from utils.config_loader import load_config
 
 
 def generate_ecological_pseudo_absences(
-        min_dist_meters: int = 5000,
-        max_extent_buffer_m: int = 200000,
-        seed: int = 42,
+    min_dist_meters: int = 5000,
+    max_extent_buffer_m: int = 200000,
+    seed: int = 42,
 ) -> pd.DataFrame:
     config = load_config()
     rng = np.random.default_rng(seed)

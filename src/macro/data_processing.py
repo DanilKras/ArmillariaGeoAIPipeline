@@ -27,7 +27,9 @@ def process_and_thin_data() -> str:
         "latitude": "lat",
         "coordinateuncertaintyinmeters": "coordinate_uncertainty_m",
     }
-    df = df.rename(columns={c: rename_map[c.lower()] for c in df.columns if c.lower() in rename_map})
+    df = df.rename(
+        columns={c: rename_map[c.lower()] for c in df.columns if c.lower() in rename_map}
+    )
 
     df = df.dropna(subset=["lon", "lat"])
 

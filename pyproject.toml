@@ -41,9 +41,24 @@ dev = [
 
 [tool.ruff]
 line-length = 100
+target-version = "py312"
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    ".dvc",
+    "logs",
+    "notebooks",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+ignore = [
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"dags/*" = ["E402"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"
