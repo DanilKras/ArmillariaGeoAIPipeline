@@ -22,7 +22,7 @@ def generate_ecological_pseudo_absences(
     crs_wgs84 = config["spatial"]["crs_wgs84"]
 
     print("Loading presence locations (Class 1)...")
-    gdf_pos = gpd.read_file(positive_path)
+    gdf_pos = gpd.read_file(positive_path, layer="armillaria_presence")
     num_points = len(gdf_pos)
 
     if num_points == 0:
