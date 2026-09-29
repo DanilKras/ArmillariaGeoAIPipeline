@@ -1,5 +1,9 @@
 # Armillaria Pathogen Risk Assessment Pipeline
 
+[![CI Pipeline](https://github.com/DanilKras/ArmillariaGeoAIPipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/DanilKras/ArmillariaGeoAIPipeline/actions/workflows/ci.yml/badge.svg)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 This project is a geospatial machine learning pipeline designed to model and map potential infection risks of
 *Armillaria ostoyae* in forest ecosystems, with a target validation area in the Sopron / Lake Fertő region.
 
@@ -36,6 +40,9 @@ learning validation, regional raster inference, and interactive serving.
 ## Project Structure
 
 ```text
+├── .github/
+│   └── workflows/
+│       └── ci.yml                  # GitHub Actions CI (Ruff, Pytest, Docker build)
 ├── api/                            # FastAPI backend
 │   ├── Dockerfile
 │   ├── main.py                     # Inference and field feedback endpoints
@@ -46,9 +53,9 @@ learning validation, regional raster inference, and interactive serving.
 ├── dags/
 │   └── armillaria_pipeline_dag.py  # Apache Airflow orchestration DAG
 ├── data/
-│   ├── 01_raw/                     # Raw occurrence data (.gitkeep)
-│   ├── 02_processed/               # Thinning and feature Parquet tables (.gitkeep)
-│   └── 03_results/                 # Exported GeoTIFF risk rasters and plots (.gitkeep)
+│   ├── 01_raw.dvc                  # DVC-tracked raw occurrences
+│   ├── 02_processed.dvc            # DVC-tracked thinned & feature Parquet tables
+│   └── 03_results.dvc              # DVC-tracked GeoTIFF risk rasters & metrics
 ├── frontend/                       # Streamlit web application
 │   ├── app.py                      # Interactive Leaflet map & SHAP diagnostic plots
 │   ├── Dockerfile
@@ -59,18 +66,21 @@ learning validation, regional raster inference, and interactive serving.
 │   └── 01_eda_armillaria.ipynb     # Spatial EDA, variogram, and sampling analysis
 ├── src/                            # Pipeline modules
 │   ├── macro/
-│   │   ├── data_extraction.py          # GBIF API occurrence harvester
-│   │   ├── data_processing.py          # 1 km spatial rarefaction
-│   │   ├── negative_sampling.py        # KDTree ecological pseudo-absence generator
-│   │   ├── feature_extraction.py       # Planetary Computer DEM & Zarr bioclim extraction
-│   │   ├── model_training.py           # Spatial Block CV & XGBoost training
-│   │   └── inference.py                # Regional 30m GeoTIFF risk raster generation
+│   │   ├── data_extraction.py      # GBIF API occurrence harvester
+│   │   ├── data_processing.py      # 1 km spatial rarefaction
+│   │   ├── negative_sampling.py    # KDTree ecological pseudo-absence generator
+│   │   ├── feature_extraction.py   # Planetary Computer DEM & Zarr bioclim extraction
+│   │   ├── model_training.py       # Spatial Block CV & XGBoost training
+│   │   └── inference.py            # Regional 30m GeoTIFF risk raster generation
 │   └── micro/
-│   │   ├── lidar_processor.py          # Micro-Scale LiDAR & 3D Point Cloud Processing
+│       └── lidar_processor.py      # Micro-Scale LiDAR & 3D Point Cloud Processing
+├── tests/                          # Automated Pytest test suite
 ├── utils/
 │   └── config_loader.py            # Dynamic YAML configuration loader
 ├── docker-compose.yaml
 ├── pyproject.toml
+├── run_pipeline.py                 # Standalone CLI pipeline runner
+├── uv.lock
 └── README.md
 ```
 
@@ -150,6 +160,7 @@ You can run each stage of the pipeline sequentially:
 |:------------------------|:---------------------------------------------------------|:-----------------------------------------------|
 | **Streamlit Dashboard** | [http://localhost:8501](http://localhost:8501)           | Interactive map risk viewer & SHAP diagnostics |
 | **FastAPI Swagger UI**  | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI documentation & inference  |
+| **Airflow Orchestrator**| [http://localhost:8080](http://localhost:8080)           | Workflow orchestration & scheduling            |
 
 ---
 
