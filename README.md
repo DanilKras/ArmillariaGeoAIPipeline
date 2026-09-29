@@ -88,7 +88,7 @@ learning validation, regional raster inference, and interactive serving.
 
 ### Requirements
 
-- Python 3.11+
+- Python 3.12+
 - `uv` or `pip`
 
 ### Step 1: Set Up Virtual Environment
@@ -162,6 +162,14 @@ You can run each stage of the pipeline sequentially:
 | **FastAPI Swagger UI**  | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI documentation & inference  |
 | **Airflow Orchestrator**| [http://localhost:8080](http://localhost:8080)           | Workflow orchestration & scheduling            |
 
+---
+
+### Automated Execution
+
+Run the complete pipeline end-to-end via CLI:
+```bash
+uv run python run_pipeline.py
+```
 ---
 
 ## Link to demo
