@@ -104,42 +104,45 @@ pip install -r requirements.txt
 You can run each stage of the pipeline sequentially:
 
 1. Harvest GBIF occurrences:
-   ```bash
+
+```bash
    python -m src.macro.data_extraction
+   ```
+
 2. Thin presences to 1x1 km grid:
 
-  ```bash
+```bash
   python -m src.macro.data_processing
 ```
 
 3. Sample balanced ecological pseudo-absences:
 
-  ```bash
+```bash
   python -m src.macro.negative_sampling
 ```
 
 4. Stream DEM and TerraClimate Zarr variables:
 
-  ```bash
+```bash
   python -m src.macro.feature_extraction
 ```
 
 5. Train XGBoost model with 150 km Spatial Block CV:
 
-  ```bash
+```bash
   python -m src.macro.model_training
 ```
 
 6. Generate 30m regional risk GeoTIFF raster:
 
-  ```bash
+```bash
   python -m src.macro.inference
 ```
 
 7. Running the Web Services (Docker)
    To run the API and dashboard locally using Docker Compose:
 
-  ```bash
+```bash
   docker-compose up --build
 ```
 
