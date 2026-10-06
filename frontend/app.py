@@ -1,15 +1,23 @@
+import json
 import os
+import tempfile
+from datetime import datetime
+from pathlib import Path
 
 import folium
+import geopandas as gpd
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import requests
 import streamlit as st
+from shapely.geometry import shape
+from shapely.ops import unary_union
+from shapely.prepared import prep
 from streamlit_folium import st_folium
 
 st.set_page_config(
-    page_title="Armillaria Risk GeoAI",
+    page_title="Armillaria Risk GeoAI | Sopron",
     page_icon="🌲",
     layout="wide",
 )
@@ -17,43 +25,58 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-        .block-container {
-            padding-top: 1.2rem !important;
-            padding-bottom: 2rem !important;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        html, body, [class*="css"], .stMarkdown, .stText {
+            font-family: 'Inter', sans-serif !important;
         }
-        header {
-            visibility: hidden !important;
+
+        .block-container { padding-top: 1rem !important; padding-bottom: 2rem !important; }
+        header { visibility: hidden !important; }
+
+        div[data-testid="stMetric"] {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            padding: 12px 16px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
-        div[data-testid="stMetricValue"] {
-            font-size: 1.4rem !important;
-            font-weight: 600 !important;
+        div[data-testid="stMetricValue"] { 
+            font-size: 1.5rem !important; 
+            font-weight: 700 !important; 
+            color: #f8fafc !important; 
         }
-        div[data-testid="stMetricLabel"] {
-            font-size: 0.85rem !important;
-            color: #94a3b8 !important;
+        div[data-testid="stMetricLabel"] { 
+            font-size: 0.8rem !important; 
+            font-weight: 500 !important; 
+            color: #94a3b8 !important; 
+            text-transform: uppercase; 
+            letter-spacing: 0.5px; 
         }
+
         .risk-banner {
-            padding: 8px 14px;
+            padding: 14px 16px; 
+            border-radius: 6px; 
+            font-weight: 600;
+            font-size: 1.1rem;
+            text-align: center; 
+            margin: 8px 0 16px 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            letter-spacing: 0.3px;
+        }
+        .risk-high { background: linear-gradient(135deg, rgba(231,76,60,0.15), rgba(231,76,60,0.05)); color: #ff6b6b; border-left: 5px solid #e74c3c; }
+        .risk-medium { background: linear-gradient(135deg, rgba(241,196,15,0.15), rgba(241,196,15,0.05)); color: #fcd34d; border-left: 5px solid #f1c40f; }
+        .risk-low { background: linear-gradient(135deg, rgba(46,204,113,0.15), rgba(46,204,113,0.05)); color: #4ade80; border-left: 5px solid #2ecc71; }
+        .risk-nodata { background: linear-gradient(135deg, rgba(148,163,184,0.15), rgba(148,163,184,0.05)); color: #94a3b8; border-left: 5px solid #64748b; }
+
+        .stButton > button {
             border-radius: 8px;
             font-weight: 600;
-            text-align: center;
-            margin-top: 4px;
-            margin-bottom: 8px;
+            transition: all 0.2s ease-in-out;
         }
-        .risk-high {
-            background-color: rgba(231, 76, 60, 0.15);
-            color: #e74c3c;
-            border: 1px solid rgba(231, 76, 60, 0.4);
-        }
-        .risk-medium {
-            background-color: rgba(241, 196, 15, 0.15);
-            color: #f1c40f;
-            border: 1px solid rgba(241, 196, 15, 0.4);
-        }
-        .risk-low {
-            background-color: rgba(46, 204, 113, 0.15);
-            color: #2ecc71;
-            border: 1px solid rgba(46, 204, 113, 0.4);
+        .stButton > button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
     </style>
     """,
@@ -61,39 +84,53 @@ st.markdown(
 )
 
 BACKEND_HOST = os.getenv("BACKEND_HOST", "http://localhost:8000")
-PREDICT_URL = f"{BACKEND_HOST}/predict"
-FEEDBACK_URL = f"{BACKEND_HOST}/feedback"
+PREDICT_URL_LOCAL = f"{BACKEND_HOST}/predict/local"
+PREDICT_URL_CLOUD = f"{BACKEND_HOST}/predict/cloud"
 
-ESA_LANDCOVER_MAP = {
-    10: "Tree Cover / Forest",
-    20: "Shrubland",
-    30: "Grassland",
-    40: "Cropland",
-    50: "Built-up / Urban",
-    60: "Bare / Sparse",
-    70: "Snow and Ice",
-    80: "Permanent Water",
-    90: "Herbaceous Wetland",
-    95: "Mangroves",
-    100: "Moss and Lichen",
-}
+BOUNDARY_PATH = "data/00_external/sopron_forest_boundary.geojson"
+BBOX_SOPRON = {"min_lat": 47.55, "max_lat": 47.75, "min_lon": 16.45, "max_lon": 16.70}
 
 if "map_center" not in st.session_state:
     st.session_state.map_center = [47.68, 16.59]
 if "map_zoom" not in st.session_state:
-    st.session_state.map_zoom = 11
+    st.session_state.map_zoom = 12
 if "target_lat" not in st.session_state:
-    st.session_state.target_lat = 47.68
+    st.session_state.target_lat = 47.6812
 if "target_lon" not in st.session_state:
-    st.session_state.target_lon = 16.59
+    st.session_state.target_lon = 16.5843
 if "inference_results" not in st.session_state:
     st.session_state.inference_results = None
+if "prediction_history" not in st.session_state:
+    st.session_state.prediction_history = []
+if "map_bounds_fitted" not in st.session_state:
+    st.session_state.map_bounds_fitted = False
 
-st.title("Autonomous GeoAI Inference & Explainability")
-st.markdown(
-    "Select a target location on the map to query Copernicus DEM, ESA WorldCover, and TerraClimate Zarr stores, "
-    "run an XGBoost spatial inference, and interpret the outcome via SHAP."
-)
+
+@st.cache_resource(show_spinner=False)
+def load_spatial_boundary(geojson_path: str):
+    if not os.path.exists(geojson_path):
+        return None, None, None
+    with open(geojson_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    raw_geom = unary_union([shape(f["geometry"]) for f in data["features"]])
+    prepared = prep(raw_geom)
+    min_lon, min_lat, max_lon, max_lat = raw_geom.bounds
+    leaflet_bounds = [[min_lat, min_lon], [max_lat, max_lon]]
+    return data, prepared, leaflet_bounds
+
+
+def export_history_to_gpkg(history_records: list) -> bytes:
+    df = pd.DataFrame(history_records)
+    gdf = gpd.GeoDataFrame(
+        df,
+        geometry=gpd.points_from_xy(df["lon"], df["lat"]),
+        crs="EPSG:4326",
+    )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_file = Path(tmp_dir) / "sopron_inspections.gpkg"
+        gdf.to_file(tmp_file, layer="armillaria_inspections", driver="GPKG")
+        with open(tmp_file, "rb") as f:
+            return f.read()
 
 
 def plot_risk_gauge(probability: float):
@@ -101,7 +138,7 @@ def plot_risk_gauge(probability: float):
         go.Indicator(
             mode="gauge+number",
             value=probability * 100,
-            number={"suffix": "%", "font": {"size": 34, "family": "Inter, sans-serif"}},
+            number={"suffix": "%", "font": {"size": 32, "family": "Inter, sans-serif"}},
             gauge={
                 "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "#475569"},
                 "bar": {"color": "#3b82f6", "thickness": 0.25},
@@ -119,8 +156,8 @@ def plot_risk_gauge(probability: float):
         )
     )
     fig.update_layout(
-        height=210,
-        margin=dict(l=15, r=15, t=20, b=25),
+        height=190,
+        margin=dict(l=10, r=10, t=10, b=15),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#f8fafc"),
@@ -129,27 +166,18 @@ def plot_risk_gauge(probability: float):
 
 
 def plot_shap_bar(shap_dict: dict):
+    if not shap_dict:
+        return None
     friendly_names = {
-        "bio1_mean_temp": "Mean Annual Temp (BIO1)",
-        "bio1_temp_c": "Mean Annual Temp (BIO1)",
+        "bio1_mean_temp": "Mean Temp (BIO1)",
         "bio4_temp_seasonality": "Temp Seasonality (BIO4)",
         "bio12_annual_precip": "Annual Precip (BIO12)",
-        "bio12_precip_mm": "Annual Precip (BIO12)",
         "bio15_precip_seasonality": "Precip Seasonality (BIO15)",
         "elevation": "Elevation (DEM)",
-        "elevation_m": "Elevation (DEM)",
-        "landcover_class": "Landcover (WorldCover)",
-        "slope_deg": "Terrain Slope",
+        "landcover_class": "Land Cover",
     }
-
     df = pd.DataFrame(
-        [
-            {
-                "Feature": friendly_names.get(k, k),
-                "SHAP Value": v,
-            }
-            for k, v in shap_dict.items()
-        ]
+        [{"Feature": friendly_names.get(k, k), "SHAP Value": v} for k, v in shap_dict.items()]
     )
     df["Abs_SHAP"] = df["SHAP Value"].abs()
     df = df.sort_values(by="Abs_SHAP", ascending=True)
@@ -164,10 +192,10 @@ def plot_shap_bar(shap_dict: dict):
         color_discrete_map={"Increases Risk": "#ef4444", "Decreases Risk": "#3b82f6"},
     )
     fig.update_layout(
-        height=220,
-        margin=dict(l=10, r=10, t=10, b=10),
+        height=190,
+        margin=dict(l=5, r=5, t=5, b=5),
         showlegend=False,
-        xaxis_title="SHAP Attribution (Log-odds impact)",
+        xaxis_title="Attribution (Log-odds)",
         yaxis_title="",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -178,58 +206,157 @@ def plot_shap_bar(shap_dict: dict):
     return fig
 
 
+st.title("Sopron Forest GeoAI: Spatial Risk Analysis")
+st.caption("Autonomous inference using Cloud-Native STAC vs Local Precomputed Models.")
+
+raw_geojson, prepared_boundary, boundary_bounds = load_spatial_boundary(BOUNDARY_PATH)
+
 top_col1, top_col2 = st.columns([2, 1], gap="medium")
+
+with top_col2:
+    st.subheader("Controls & Inspection")
+    st.write(f"**Lat:** `{st.session_state.target_lat:.5f}` | **Lon:** `{st.session_state.target_lon:.5f}`")
+
+    st.markdown("##### Inference Engine")
+    engine_mode = st.radio(
+        "Backend Routing:",
+        options=["⚡ Local Edge (Sopron Forest)", "☁️ Cloud Streaming (Global)"],
+        captions=[
+            "Latency: <50ms. Uses precomputed cache.",
+            "Latency: ~30s. Live STAC & Zarr queries."
+        ],
+        index=0
+    )
+
+    is_sopron_mode = "Local" in engine_mode
+    in_bounds = (
+            BBOX_SOPRON["min_lat"] <= st.session_state.target_lat <= BBOX_SOPRON["max_lat"]
+            and BBOX_SOPRON["min_lon"] <= st.session_state.target_lon <= BBOX_SOPRON["max_lon"]
+    )
+
+    if is_sopron_mode and not in_bounds:
+        st.warning(
+            "⚠️ Target is outside the Sopron precomputed extent. Switch to 'Cloud Streaming' for global inference.")
+        st.button("Run Spatial Inference", disabled=True, use_container_width=True)
+    else:
+        if st.button("Run Spatial Inference", type="primary", use_container_width=True):
+            target_endpoint = PREDICT_URL_LOCAL if is_sopron_mode else PREDICT_URL_CLOUD
+            loading_msg = "Querying local cache..." if is_sopron_mode else "Extracting STAC assets & streaming Zarr (~30s)..."
+
+            with st.spinner(loading_msg):
+                try:
+                    resp = requests.post(
+                        target_endpoint,
+                        json={
+                            "lat": st.session_state.target_lat,
+                            "lon": st.session_state.target_lon,
+                        },
+                        timeout=45,
+                    )
+                    if resp.status_code == 422:
+                        st.error(f"Validation Error: {resp.json().get('detail')}")
+                    else:
+                        resp.raise_for_status()
+                        res = resp.json()
+                        st.session_state.inference_results = res
+
+                        if res.get("is_forest", False):
+                            feats = res.get("extracted_features") or {}
+                            new_entry = {
+                                "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                                "lat": st.session_state.target_lat,
+                                "lon": st.session_state.target_lon,
+                                "risk_probability": res["risk_probability"],
+                                "risk_level": res["risk_level"],
+                                "elevation_m": feats.get("elevation_m", 0.0),
+                                "bio1_temp_c": feats.get("bio1_temp_c", 0.0),
+                            }
+                            if not any(
+                                    abs(p["lat"] - new_entry["lat"]) < 1e-5
+                                    and abs(p["lon"] - new_entry["lon"]) < 1e-5
+                                    for p in st.session_state.prediction_history
+                            ):
+                                st.session_state.prediction_history.append(new_entry)
+                except requests.exceptions.RequestException as e:
+                    st.error(f"Backend API error: {e}")
 
 with top_col1:
     m = folium.Map(
         location=st.session_state.map_center,
         zoom_start=st.session_state.map_zoom,
+        min_zoom=4,
+        max_zoom=16,
         tiles=None,
     )
 
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        attr="Esri",
+        attr="Esri Satellite",
         name="Satellite (Esri)",
         overlay=False,
-        control=True,
     ).add_to(m)
 
     folium.TileLayer(
         tiles="OpenStreetMap",
         name="Topography (OSM)",
         overlay=False,
-        control=True,
+    ).add_to(m)
+
+    if raw_geojson:
+        folium.GeoJson(
+            data=raw_geojson,
+            name="Sopron Forest Boundary",
+            style_function=lambda f: {
+                "fillColor": "#3b82f6",
+                "fillOpacity": 0.06,
+                "color": "#60a5fa",
+                "weight": 2.2,
+                "dashArray": "6, 6",
+            },
+        ).add_to(m)
+
+        if not st.session_state.map_bounds_fitted and boundary_bounds:
+            m.fit_bounds(boundary_bounds, padding=(15, 15))
+            st.session_state.map_bounds_fitted = True
+
+    for pt in st.session_state.prediction_history:
+        p_val = pt["risk_probability"]
+        color = "#ef4444" if p_val >= 0.66 else "#f59e0b" if p_val >= 0.33 else "#10b981"
+        folium.CircleMarker(
+            location=[pt["lat"], pt["lon"]],
+            radius=5,
+            color=color,
+            fill=True,
+            fill_color=color,
+            fill_opacity=0.85,
+            tooltip=f"Risk: {p_val * 100:.1f}%",
+        ).add_to(m)
+
+    folium.Marker(
+        [st.session_state.target_lat, st.session_state.target_lon],
+        popup=f"Selected: {st.session_state.target_lat:.4f}, {st.session_state.target_lon:.4f}",
+        icon=folium.Icon(color="red", icon="crosshairs", prefix="fa"),
     ).add_to(m)
 
     folium.LayerControl(position="topright", collapsed=False).add_to(m)
 
-    folium.Marker(
-        [st.session_state.target_lat, st.session_state.target_lon],
-        popup=f"Target: {st.session_state.target_lat:.4f}, {st.session_state.target_lon:.4f}",
-        tooltip="Selected point for inference",
-        icon=folium.Icon(color="red", icon="info-sign"),
-    ).add_to(m)
-
     map_data = st_folium(
         m,
-        height=420,
+        height=430,
         use_container_width=True,
         returned_objects=["last_clicked", "center", "zoom"],
-        key="armillaria_leaflet_map",
+        key="sopron_unified_map",
     )
 
     if map_data and map_data.get("last_clicked"):
-        clicked_lat = map_data["last_clicked"]["lat"]
-        clicked_lon = map_data["last_clicked"]["lng"]
-
+        c_lat = map_data["last_clicked"]["lat"]
+        c_lon = map_data["last_clicked"]["lng"]
         if (
-            abs(clicked_lat - st.session_state.target_lat) > 1e-5
-            or abs(clicked_lon - st.session_state.target_lon) > 1e-5
+                abs(c_lat - st.session_state.target_lat) > 1e-5
+                or abs(c_lon - st.session_state.target_lon) > 1e-5
         ):
-            st.session_state.target_lat = clicked_lat
-            st.session_state.target_lon = clicked_lon
-
+            st.session_state.target_lat = c_lat
+            st.session_state.target_lon = c_lon
             if map_data.get("center"):
                 st.session_state.map_center = [
                     map_data["center"]["lat"],
@@ -237,93 +364,107 @@ with top_col1:
                 ]
             if map_data.get("zoom"):
                 st.session_state.map_zoom = map_data["zoom"]
-
             st.rerun()
-
-with top_col2:
-    st.subheader("Spatial Analysis")
-    st.info(
-        f"Selected Point Coordinates:\n\n**Latitude:** `{st.session_state.target_lat:.5f}`\n\n"
-        f"**Longitude:** `{st.session_state.target_lon:.5f}`"
-    )
-
-    if st.button("Run Spatial Inference", type="primary", use_container_width=True):
-        with st.status("Initiating GeoAI Pipeline...", expanded=True) as status:
-            try:
-                st.write("Querying STAC assets & streaming TerraClimate Zarr...")
-                response = requests.post(
-                    PREDICT_URL,
-                    json={"lat": st.session_state.target_lat, "lon": st.session_state.target_lon},
-                    timeout=180,
-                )
-                response.raise_for_status()
-
-                st.session_state.inference_results = response.json()
-                status.update(label="Inference Complete!", state="complete", expanded=False)
-
-            except requests.exceptions.RequestException as e:
-                status.update(label="Inference Failed", state="error", expanded=True)
-                st.error(f"API Error: {e}")
 
 if st.session_state.inference_results:
     st.markdown("---")
     res = st.session_state.inference_results
     prob = float(res.get("risk_probability", 0.0))
+    is_forest = res.get("is_forest", True)
 
-    bottom_col1, bottom_col2, bottom_col3 = st.columns([1.1, 1.8, 1.4], gap="medium")
+    b_col1, b_col2, b_col3 = st.columns([1.1, 1.8, 1.4], gap="medium")
 
-    with bottom_col1:
-        st.markdown("### Infection Risk")
-        st.plotly_chart(
-            plot_risk_gauge(prob),
-            use_container_width=True,
-            config={"displayModeBar": False},
-        )
-        if prob >= 0.66:
+    with b_col1:
+        st.markdown("### Infection Probability")
+        if not is_forest:
             st.markdown(
-                '<div class="risk-banner risk-high">⚠️ High Pathogen Suitability</div>',
+                '<div class="risk-banner risk-nodata">Non-Forest / Excluded Area</div>',
                 unsafe_allow_html=True,
             )
-        elif prob >= 0.33:
-            st.markdown(
-                '<div class="risk-banner risk-medium">⚡ Moderate Infection Risk</div>',
-                unsafe_allow_html=True,
+            st.caption("Point falls outside forest canopy mask.")
+        else:
+            st.plotly_chart(
+                plot_risk_gauge(prob),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
+            if prob >= 0.66:
+                st.markdown(
+                    '<div class="risk-banner risk-high">⚠️ High Risk Zone</div>',
+                    unsafe_allow_html=True,
+                )
+            elif prob >= 0.33:
+                st.markdown(
+                    '<div class="risk-banner risk-medium">⚡ Moderate Risk Zone</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div class="risk-banner risk-low">Low Risk / Healthy Stand</div>',
+                    unsafe_allow_html=True,
+                )
+
+    with b_col2:
+        st.markdown("### Factor Contribution (SHAP)")
+        shap_chart = plot_shap_bar(res.get("shap_values", {}))
+        if shap_chart:
+            st.plotly_chart(
+                shap_chart,
+                use_container_width=True,
+                config={"displayModeBar": False},
             )
         else:
-            st.markdown(
-                '<div class="risk-banner risk-low">Unfavorable Habitat / Low Risk</div>',
-                unsafe_allow_html=True,
-            )
+            st.info("SHAP attribution unavailable for non-forest points.")
 
-    with bottom_col2:
-        st.markdown("### Feature Attribution (SHAP)")
-        st.plotly_chart(
-            plot_shap_bar(res.get("shap_values", {})),
+    with b_col3:
+        st.markdown("### Extracted Predictors")
+        feats = res.get("extracted_features")
+        if is_forest and feats:
+            c1, c2 = st.columns(2)
+            with c1:
+                c1.metric("Elevation", f"{feats.get('elevation_m', 0):.0f} m")
+                c1.metric("Mean Temp", f"{feats.get('bio1_temp_c', 0):.1f} °C")
+                c1.metric("Temp Seasonality", f"{feats.get('bio4_seasonality', 0):.0f}")
+            with c2:
+                c2.metric("Land Cover", "Forest (Class 10)" if feats.get('landcover_class') == 10 else "Other")
+                c2.metric("Annual Precip", f"{feats.get('bio12_precip_mm', 0):.0f} mm")
+                c2.metric("Precip Seasonality", f"{feats.get('bio15_precip_seas', 0):.1f}")
+        else:
+            st.caption("No biological features for non-forest pixels.")
+
+if st.session_state.prediction_history:
+    st.markdown("---")
+    st.subheader("Field Inspection History & Export")
+    hist_df = pd.DataFrame(st.session_state.prediction_history)
+
+    st.dataframe(
+        hist_df[
+            [
+                "timestamp",
+                "lat",
+                "lon",
+                "risk_probability",
+                "risk_level",
+                "elevation_m",
+                "bio1_temp_c",
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    d_col1, d_col2 = st.columns([1, 4])
+    with d_col1:
+        gpkg_data = export_history_to_gpkg(st.session_state.prediction_history)
+        st.download_button(
+            label="Download GPKG Layer",
+            data=gpkg_data,
+            file_name=f"armillaria_inspections_{datetime.now().strftime('%Y%m%d_%H%M')}.gpkg",
+            mime="application/geopackage+sqlite3",
+            type="primary",
             use_container_width=True,
-            config={"displayModeBar": False},
         )
-
-    with bottom_col3:
-        st.markdown("### Extracted Features")
-        feats = res.get("extracted_features", {})
-
-        lc_code = int(feats.get("landcover_class", 0))
-        lc_label = ESA_LANDCOVER_MAP.get(lc_code, f"Class {lc_code}")
-
-        c1, c2 = st.columns(2)
-        with c1:
-            elev_val = feats.get("elevation_m") or feats.get("elevation", 0)
-            c1.metric("Elevation", f"{elev_val:.1f} m")
-            bio1_val = feats.get("bio1_temp_c") or feats.get("bio1_mean_temp", 0)
-            c1.metric("Mean Temp (BIO1)", f"{bio1_val:.2f} °C")
-            bio4_val = feats.get("bio4_temp_seasonality", 0)
-            if bio4_val:
-                c1.metric("Temp Seasonality", f"{bio4_val:.0f}")
-
-        with c2:
-            c2.metric("Land Cover", lc_label)
-            bio12_val = feats.get("bio12_precip_mm") or feats.get("bio12_annual_precip", 0)
-            c2.metric("Annual Precip (BIO12)", f"{bio12_val:.1f} mm")
-            bio15_val = feats.get("bio15_precip_seasonality", 0)
-            if bio15_val:
-                c2.metric("Precip Seasonality", f"{bio15_val:.1f}")
+    with d_col2:
+        if st.button("Clear Points"):
+            st.session_state.prediction_history = []
+            st.rerun()

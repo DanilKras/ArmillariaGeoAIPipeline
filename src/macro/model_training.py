@@ -9,6 +9,9 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import GroupKFold
 
 from utils.config_loader import load_config
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def train_spatial_sdm():
@@ -48,9 +51,9 @@ def train_spatial_sdm():
         preds_proba = model.predict_proba(val_data[features])[:, 1]
         auc = roc_auc_score(val_data["target"], preds_proba)
         scores.append(auc)
-        print(f"Fold {fold + 1} | ROC-AUC: {auc:.3f}")
+        logger.info(f"Fold {fold + 1} | ROC-AUC: {auc:.3f}")
 
-    print(f"Mean Spatial ROC-AUC: {pd.Series(scores).mean():.3f}")
+    logger.info(f"Mean Spatial ROC-AUC: {pd.Series(scores).mean():.3f}")
 
     final_model = xgb.XGBClassifier(**config["model_params"])
     final_model.fit(gdf[features], gdf["target"])
@@ -58,7 +61,7 @@ def train_spatial_sdm():
     model_path = Path(config["paths"]["model_weights"])
     model_path.parent.mkdir(parents=True, exist_ok=True)
     final_model.save_model(model_path)
-    print(f"Model saved to {model_path}")
+    logger.info(f"Model saved to {model_path}")
 
     explainer = shap.TreeExplainer(final_model)
     sample_df = gdf[features].sample(min(1000, len(gdf)), random_state=42)
@@ -69,7 +72,7 @@ def train_spatial_sdm():
     shap.summary_plot(shap_values, sample_df, show=False)
     plt.savefig(shap_path, dpi=300, bbox_inches="tight")
     plt.close()
-    print(f"SHAP plot saved to {shap_path}")
+    logger.info(f"SHAP plot saved to {shap_path}")
 
 
 if __name__ == "__main__":

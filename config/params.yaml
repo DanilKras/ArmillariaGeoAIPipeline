@@ -32,3 +32,22 @@ model_params:
   colsample_bytree: 0.8
   random_state: 42
   eval_metric: "auc"
+
+temporal:
+  start_date: "2015-01-01"
+  end_date: "2025-12-31"
+
+climate:
+  variables: ["tmax", "tmin", "ppt"]
+
+sentinel2:
+  max_cloud_cover: 20
+  bands: ["B04", "B08", "B11", "SCL"]
+
+data_source:
+  type: "GBIF"
+  local_path: ""
+
+pseudo_absences:
+  min_dist_meters: 5000
+  max_extent_buffer_m: 200000

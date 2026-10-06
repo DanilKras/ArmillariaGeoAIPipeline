@@ -1,21 +1,136 @@
-from pydantic import BaseModel, Field
+import json
+from enum import Enum
+from pathlib import Path
+from typing import Dict, List, Optional, Union
+
+from pydantic import BaseModel, Field, model_validator
+from shapely.geometry import Point, shape
+from shapely.ops import unary_union
+from shapely.prepared import prep
+
+from utils.config_loader import load_config
+
+try:
+    _config = load_config()
+    MIN_LON, MIN_LAT, MAX_LON, MAX_LAT = _config["spatial"]["bbox"]
+except Exception:
+    MIN_LON, MIN_LAT, MAX_LON, MAX_LAT = 16.45, 47.55, 16.70, 47.75
+
+BOUNDARY_GEOJSON_PATH = Path("data/00_external/sopron_forest_boundary.geojson")
+_PREPARED_BOUNDARY = None
+
+if BOUNDARY_GEOJSON_PATH.exists():
+    try:
+        with open(BOUNDARY_GEOJSON_PATH, "r", encoding="utf-8") as f:
+            _geojson_data = json.load(f)
+        _geoms = [shape(feature["geometry"]) for feature in _geojson_data["features"]]
+        _PREPARED_BOUNDARY = prep(unary_union(_geoms))
+    except Exception:
+        _PREPARED_BOUNDARY = None
 
 
-class InferenceRequest(BaseModel):
-    lat: float = Field(..., description="Latitude in WGS84", ge=-90.0, le=90.0, examples=[47.68])
-    lon: float = Field(..., description="Longitude in WGS84", ge=-180.0, le=180.0, examples=[16.58])
+class RiskLevel(str, Enum):
+    LOW = "Low"
+    MEDIUM = "Medium"
+    HIGH = "High"
+    NON_FOREST = "Non-Forest / Unsuitable"
 
 
 class ExtractedFeatures(BaseModel):
-    elevation_m: float
-    landcover_class: int
-    bio1_temp_c: float
-    bio4_seasonality: float
-    bio12_precip_mm: float
-    bio15_precip_seas: float
+    elevation_m: float = Field(..., description="Copernicus DEM 30m altitude in meters", examples=[420.5])
+    landcover_class: int = Field(..., description="ESA WorldCover class code (10 = Tree cover)", examples=[10])
+    bio1_temp_c: float = Field(..., description="Annual Mean Temperature in Celsius (BIO1)", examples=[9.82])
+    bio4_seasonality: float = Field(..., description="Temperature Seasonality (std dev * 100) (BIO4)", examples=[685.2])
+    bio12_precip_mm: float = Field(..., description="Annual Cumulative Precipitation in mm (BIO12)", examples=[710.4])
+    bio15_precip_seas: float = Field(..., description="Precipitation Seasonality coefficient (BIO15)", examples=[24.8])
+
+
+class InferenceRequest(BaseModel):
+    lat: float = Field(
+        ...,
+        description="Latitude in WGS84 coordinate system",
+        ge=-90.0,
+        le=90.0,
+        examples=[47.6812],
+    )
+    lon: float = Field(
+        ...,
+        description="Longitude in WGS84 coordinate system",
+        ge=-180.0,
+        le=180.0,
+        examples=[16.5843],
+    )
+
+    @model_validator(mode="after")
+    def validate_spatial_extent(self) -> "InferenceRequest":
+        if not (MIN_LAT <= self.lat <= MAX_LAT and MIN_LON <= self.lon <= MAX_LON):
+            raise ValueError(
+                f"Coordinates ({self.lat:.4f}, {self.lon:.4f}) are outside the study region envelope. "
+                f"Allowed bounds: lat [{MIN_LAT:.3f}, {MAX_LAT:.3f}], lon [{MIN_LON:.3f}, {MAX_LON:.3f}]."
+            )
+
+        if _PREPARED_BOUNDARY is not None:
+            pt = Point(self.lon, self.lat)
+            if not _PREPARED_BOUNDARY.contains(pt):
+                raise ValueError(
+                    f"Point ({self.lat:.5f}, {self.lon:.5f}) is outside the active forest boundary."
+                )
+
+        return self
 
 
 class InferenceResponse(BaseModel):
-    risk_probability: float = Field(..., ge=0.0, le=1.0, description="Probability (0.0 - 1.0)")
-    risk_level: str = Field(..., description="Low, Medium, or High")
-    extracted_features: ExtractedFeatures
+    risk_probability: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Armillaria ostoyae infection risk probability (0.0 to 1.0)",
+        examples=[0.742],
+    )
+    risk_level: RiskLevel = Field(
+        ...,
+        description="Categorical risk tier based on calibrated thresholds",
+        examples=[RiskLevel.HIGH],
+    )
+    is_forest: bool = Field(
+        ...,
+        description="Flag indicating if the queried point falls within valid forest cover (ESA WorldCover = 10)",
+        examples=[True],
+    )
+    extracted_features: Optional[ExtractedFeatures] = Field(
+        default=None,
+        description="Extracted environmental and bioclimatic features (None if point is outside forest)",
+    )
+    shap_values: Dict[str, float] = Field(
+        default_factory=dict,
+        description="Local SHAP attributions (log-odds impact) for each feature",
+        examples=[{"bio12_annual_precip": 0.42, "elevation": -0.15}],
+    )
+
+
+class BatchPointItem(BaseModel):
+    id: Union[str, int] = Field(..., description="Unique record identifier", examples=["pt_001"])
+    lat: float = Field(..., ge=-90.0, le=90.0, examples=[47.68])
+    lon: float = Field(..., ge=-180.0, le=180.0, examples=[16.58])
+
+
+class BatchInferenceRequest(BaseModel):
+    points: List[BatchPointItem] = Field(
+        ...,
+        description="List of target coordinates for vector batch inference",
+        max_length=5000,
+    )
+
+
+class BatchPointResult(BaseModel):
+    id: Union[str, int]
+    lat: float
+    lon: float
+    risk_probability: float
+    risk_level: RiskLevel
+    is_forest: bool
+
+
+class BatchInferenceResponse(BaseModel):
+    processed_count: int
+    results: List[BatchPointResult]

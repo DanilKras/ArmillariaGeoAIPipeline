@@ -1,0 +1,14 @@
+rasterio
+geopandas
+xgboost
+shap
+planetary-computer
+pystac-client
+xarray
+zarr
+fsspec
+duckdb
+pygbif
+requests
+pandas
+numpy

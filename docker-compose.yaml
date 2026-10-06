@@ -47,7 +47,7 @@ services:
     <<: *airflow-common
     command: webserver
     ports:
-      - "8080:8080"
+      - "8081:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 10s
@@ -59,14 +59,21 @@ services:
     <<: *airflow-common
     command: scheduler
     restart: always
+
   geoai-inference:
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/Dockerfile
     ports:
       - "8000:8000"
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
+      - ./api:/app/api
+      - ./utils:/app/utils
       - ./models:/app/models:ro
+      - ./data:/app/data:ro
+    environment:
+      - PYTHONPATH=/app
     restart: unless-stopped
 
   geoai-frontend:

@@ -6,22 +6,26 @@ import pandas as pd
 from scipy.spatial import KDTree
 
 from utils.config_loader import load_config
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def generate_ecological_pseudo_absences(
-    min_dist_meters: int = 5000,
-    max_extent_buffer_m: int = 200000,
-    seed: int = 42,
+        min_dist_meters: int = 5000,
+        max_extent_buffer_m: int = 200000,
+        seed: int = 42,
 ) -> pd.DataFrame:
     config = load_config()
     rng = np.random.default_rng(seed)
-
+    min_dist = config.get("pseudo_absences", {}).get("min_dist_meters", 5000)
+    max_extent_buffer = config.get("pseudo_absences", {}).get("max_extent_buffer_m", 200000)
     positive_path = config["paths"]["clean_gpkg"]
     output_path = Path(config["paths"]["features_combined"])
     crs_projected = config["spatial"]["crs_projected"]
     crs_wgs84 = config["spatial"]["crs_wgs84"]
 
-    print("Loading presence locations (Class 1)...")
+    logger.info("Loading presence locations (Class 1)...")
     gdf_pos = gpd.read_file(positive_path, layer="armillaria_presence")
     num_points = len(gdf_pos)
 
@@ -34,15 +38,15 @@ def generate_ecological_pseudo_absences(
     tree = KDTree(pos_coords)
 
     minx, maxx = (
-        pos_coords[:, 0].min() - max_extent_buffer_m,
-        pos_coords[:, 0].max() + max_extent_buffer_m,
+        pos_coords[:, 0].min() - max_extent_buffer,
+        pos_coords[:, 0].max() + max_extent_buffer,
     )
     miny, maxy = (
-        pos_coords[:, 1].min() - max_extent_buffer_m,
-        pos_coords[:, 1].max() + max_extent_buffer_m,
+        pos_coords[:, 1].min() - max_extent_buffer,
+        pos_coords[:, 1].max() + max_extent_buffer,
     )
 
-    print(f"Generating {num_points} pseudo-absences with distance >= {min_dist_meters}m...")
+    logger.info(f"Generating {num_points} pseudo-absences with distance >= {min_dist}m...")
     neg_coords = []
 
     while len(neg_coords) < num_points:
@@ -54,7 +58,7 @@ def generate_ecological_pseudo_absences(
         candidates = np.column_stack([rand_x, rand_y])
 
         distances, _ = tree.query(candidates)
-        valid_candidates = candidates[distances >= min_dist_meters]
+        valid_candidates = candidates[distances >= min_dist]
 
         neg_coords.extend(valid_candidates[:needed])
 
@@ -99,7 +103,7 @@ def generate_ecological_pseudo_absences(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df_combined.to_csv(output_path, index=False)
-    print(f"Saved {len(df_combined)} samples (1:1 balanced) to {output_path}")
+    logger.info(f"Saved {len(df_combined)} samples (1:1 balanced) to {output_path}")
 
     return df_combined
 

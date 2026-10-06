@@ -15,6 +15,9 @@ from pystac_client.stac_api_io import StacApiIO
 from rasterio.enums import Resampling
 
 from utils.config_loader import load_config
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -27,7 +30,7 @@ def generate_risk_map() -> None:
     bbox = config["spatial"]["bbox"]
     min_lon, min_lat, max_lon, max_lat = bbox
 
-    print(f"Generating risk map for region: {config['project']['region']}")
+    logger.info(f"Generating risk map for region: {config['project']['region']}")
 
     stac_io = StacApiIO()
     stac_io.session.verify = False
@@ -43,7 +46,7 @@ def generate_risk_map() -> None:
         "GDAL_HTTP_UNSAFESSL": "YES",
     }
 
-    print("Reading Copernicus DEM...")
+    logger.info("Reading Copernicus DEM...")
     search_dem = catalog.search(collections=["cop-dem-glo-30"], bbox=bbox)
     items_dem = list(search_dem.items())
     if not items_dem:
@@ -62,12 +65,12 @@ def generate_risk_map() -> None:
             dem_crs = src.crs
             dem_shape = elevation_matrix.shape
 
-            cols, rows = np.meshgrid(np.arange(window.width), np.arange(window.height))
-            lons, lats = transform * (cols, rows)
-            lons = np.array(lons, dtype=np.float32)
-            lats = np.array(lats, dtype=np.float32)
+            cols = np.arange(window.width)
+            rows = np.arange(window.height)
+            grid_lons, _ = transform * (cols, np.zeros_like(cols))
+            _, grid_lats = transform * (np.zeros_like(rows), rows)
 
-    print("Reading and aligning ESA WorldCover...")
+    logger.info("Reading and aligning ESA WorldCover...")
     search_lc = catalog.search(collections=["esa-worldcover"], bbox=bbox)
     items_lc = list(search_lc.items())
     if not items_lc:
@@ -90,9 +93,13 @@ def generate_risk_map() -> None:
             )
 
     valid_mask = (elevation_matrix > 0) & (landcover_matrix == 10)
-    valid_lats = lats[valid_mask]
-    valid_lons = lons[valid_mask]
-    print("Reading and interpolating TerraClimate variables...")
+    num_valid = np.count_nonzero(valid_mask)
+    logger.info(f"Target forest pixels for inference: {num_valid:,}")
+
+    if num_valid == 0:
+        raise ValueError("No forest pixels found within the selected bounding box.")
+
+    logger.info("Extracting and aggregating TerraClimate variables...")
     collection_clim = catalog.get_collection("terraclimate")
     zarr_url = collection_clim.assets["zarr-https"].href
     signed_url = planetary_computer.sign(zarr_url)
@@ -105,22 +112,52 @@ def generate_risk_map() -> None:
 
     store = fsspec.get_mapper(base_url, params=sas_dict)
     ds = xr.open_zarr(store, consolidated=True)
-    ds_clim = ds[["tmax", "tmin", "ppt"]].sel(time=slice("2011-01-01", "2020-12-31"))
 
-    lats_da = xr.DataArray(valid_lats, dims="points")
-    lons_da = xr.DataArray(valid_lons, dims="points")
+    pad = 0.15
+    lat_slice = (
+        slice(max_lat + pad, min_lat - pad)
+        if ds.lat[0] > ds.lat[-1]
+        else slice(min_lat - pad, max_lat + pad)
+    )
+    lon_slice = (
+        slice(min_lon - pad, max_lon + pad)
+        if ds.lon[0] < ds.lon[-1]
+        else slice(max_lon + pad, min_lon - pad)
+    )
 
-    extracted = ds_clim.interp(lat=lats_da, lon=lons_da, method="linear").compute()
+    start_date = config["temporal"]["start_date"]
+    end_date = config["temporal"]["end_date"]
 
-    tmean = (extracted["tmax"] + extracted["tmin"]) * 0.5 * 0.1
-    ppt = extracted["ppt"]
+    ds_sub = ds[["tmax", "tmin", "ppt"]].sel(
+        time=slice(start_date, end_date),
+        lat=lat_slice,
+        lon=lon_slice,
+    ).compute()
 
-    bio1 = tmean.mean(dim="time").values
-    bio4 = (tmean.groupby("time.month").mean(dim="time").std(dim="month").values) * 100
-    bio12 = ppt.groupby("time.year").sum(dim="time").mean(dim="year").values
+    tmean_coarse = (ds_sub["tmax"] + ds_sub["tmin"]) * 0.5 * 0.1
+    ppt_coarse = ds_sub["ppt"]
 
-    monthly_ppt = ppt.groupby("time.month").mean(dim="time")
-    bio15 = (monthly_ppt.std(dim="month") / (monthly_ppt.mean(dim="month") + 1e-6) * 100).values
+    bio1_coarse = tmean_coarse.mean(dim="time")
+    bio4_coarse = (tmean_coarse.groupby("time.month").mean(dim="time").std(dim="month")) * 100
+    bio12_coarse = ppt_coarse.groupby("time.year").sum(dim="time").mean(dim="year")
+    monthly_ppt = ppt_coarse.groupby("time.month").mean(dim="time")
+    bio15_coarse = (monthly_ppt.std(dim="month") / (monthly_ppt.mean(dim="month") + 1e-6)) * 100
+
+    bio_ds = xr.Dataset(
+        {
+            "bio1": bio1_coarse,
+            "bio4": bio4_coarse,
+            "bio12": bio12_coarse,
+            "bio15": bio15_coarse,
+        }
+    )
+
+    bio_grid = bio_ds.interp(lat=grid_lats, lon=grid_lons, method="linear")
+
+    bio1 = bio_grid["bio1"].values[valid_mask]
+    bio4 = bio_grid["bio4"].values[valid_mask]
+    bio12 = bio_grid["bio12"].values[valid_mask]
+    bio15 = bio_grid["bio15"].values[valid_mask]
 
     X_valid = pd.DataFrame(
         {
@@ -133,7 +170,7 @@ def generate_risk_map() -> None:
         }
     )
 
-    print(f"Loading model from: {model_path}")
+    logger.info(f"Loading trained model from: {model_path}")
     clf = xgb.XGBClassifier()
     clf.load_model(model_path)
 
@@ -142,22 +179,28 @@ def generate_risk_map() -> None:
     risk_matrix = np.full(dem_shape, -9999.0, dtype=np.float32)
     risk_matrix[valid_mask] = probabilities
 
-    Path(output_tif).parent.mkdir(parents=True, exist_ok=True)
+    output_file = Path(output_tif)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
     with rasterio.open(
-        output_tif,
-        "w",
-        driver="GTiff",
-        height=dem_shape[0],
-        width=dem_shape[1],
-        count=1,
-        dtype=np.float32,
-        crs=dem_crs,
-        transform=transform,
-        nodata=-9999.0,
+            output_file,
+            "w",
+            driver="GTiff",
+            height=dem_shape[0],
+            width=dem_shape[1],
+            count=1,
+            dtype=np.float32,
+            crs=dem_crs,
+            transform=transform,
+            nodata=-9999.0,
+            compress="deflate",
+            tiled=True,
+            blockxsize=256,
+            blockysize=256,
     ) as dst:
         dst.write(risk_matrix, 1)
 
-    print(f"Risk map successfully written to: {output_tif}")
+    logger.info(f"Risk map successfully written to: {output_file}")
 
 
 if __name__ == "__main__":

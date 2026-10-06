@@ -4,6 +4,9 @@ import geopandas as gpd
 import pandas as pd
 
 from utils.config_loader import load_config
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def process_and_thin_data() -> str:
@@ -14,7 +17,7 @@ def process_and_thin_data() -> str:
     crs_wgs84 = config["spatial"]["crs_wgs84"]
     crs_projected = config["spatial"]["crs_projected"]
 
-    print(f"Reading raw observations from: {raw_path}")
+    logger.info(f"Reading raw observations from: {raw_path}")
     if raw_path.suffix == ".parquet":
         df = pd.read_parquet(raw_path)
     else:
@@ -39,7 +42,7 @@ def process_and_thin_data() -> str:
     gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df["lon"], df["lat"]), crs=crs_wgs84)
     initial_count = len(gdf)
 
-    print("Applying 1x1 km spatial rarefaction...")
+    logger.info("Applying 1x1 km spatial rarefaction...")
     gdf_metric = gdf.to_crs(crs_projected)
 
     gdf_metric["grid_x"] = (gdf_metric.geometry.x // 1000).astype(int)
@@ -53,8 +56,8 @@ def process_and_thin_data() -> str:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     gdf_clean.to_file(output_path, driver="GPKG")
 
-    print(f"Rarefaction complete: {initial_count} -> {final_count} points.")
-    print(f"Clean points saved to: {output_path}")
+    logger.info(f"Rarefaction complete: {initial_count} -> {final_count} points.")
+    logger.info(f"Clean points saved to: {output_path}")
 
     return str(output_path)
 
