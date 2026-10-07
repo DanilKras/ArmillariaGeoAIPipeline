@@ -72,7 +72,7 @@ def extract_sentinel2_indices(row, catalog, config):
             collections=["sentinel-2-l2a"],
             intersects=point_geom,
             datetime=f"{start_date}/{end_date}",
-            query={"eo:cloud_cover": {"lt": max_cloud}}
+            query={"eo:cloud_cover": {"lt": max_cloud}},
         )
         items = list(search.items())
 
@@ -140,7 +140,9 @@ def run_advanced_feature_extraction() -> pd.DataFrame:
         df.to_parquet(checkpoint_path, engine="pyarrow", compression="snappy")
         logger.info(f"Saved terrain checkpoint to: {checkpoint_path}")
 
-    logger.info(f"Streaming TerraClimate variables ({climate_vars}) from {start_date} to {end_date}...")
+    logger.info(
+        f"Streaming TerraClimate variables ({climate_vars}) from {start_date} to {end_date}..."
+    )
     collection = catalog.get_collection("terraclimate")
     zarr_url = collection.assets["zarr-https"].href
     signed_url = planetary_computer.sign(zarr_url)
@@ -163,8 +165,8 @@ def run_advanced_feature_extraction() -> pd.DataFrame:
         tmean = (extracted["tmax"] + extracted["tmin"]) * 0.5
         df["bio1_mean_temp"] = tmean.mean(dim="time").values
         df["bio4_temp_seasonality"] = (
-                                          tmean.groupby("time.month").mean(dim="time").std(dim="month").values
-                                      ) * 100
+            tmean.groupby("time.month").mean(dim="time").std(dim="month").values
+        ) * 100
 
     if "ppt" in climate_vars:
         ppt = extracted["ppt"]

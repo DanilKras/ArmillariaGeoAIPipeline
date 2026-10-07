@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Dual-Engine GeoAI Inference API",
     description="Local Precomputed (<50ms) vs Cloud Streaming (~30s) Inference",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 
@@ -79,7 +79,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 def predict_local(request: InferenceRequest):
     src = app_state.get("raster_src")
     if not src:
-        raise HTTPException(status_code=500, detail="Local raster not loaded. Run generate_risk_map.py first.")
+        raise HTTPException(
+            status_code=500, detail="Local raster not loaded. Run generate_risk_map.py first."
+        )
 
     try:
         sample_gen = src.sample([(request.lon, request.lat)])
@@ -116,14 +118,16 @@ def predict_local(request: InferenceRequest):
         risk_probability=round(prob, 4),
         risk_level=level,
         is_forest=True,
-        extracted_features=ExtractedFeatures(**{
-            "elevation_m": sample_features["elevation"],
-            "landcover_class": sample_features["landcover_class"],
-            "bio1_temp_c": sample_features["bio1_mean_temp"],
-            "bio4_seasonality": sample_features["bio4_temp_seasonality"],
-            "bio12_precip_mm": sample_features["bio12_annual_precip"],
-            "bio15_precip_seas": sample_features["bio15_precip_seasonality"]
-        }),
+        extracted_features=ExtractedFeatures(
+            **{
+                "elevation_m": sample_features["elevation"],
+                "landcover_class": sample_features["landcover_class"],
+                "bio1_temp_c": sample_features["bio1_mean_temp"],
+                "bio4_seasonality": sample_features["bio4_temp_seasonality"],
+                "bio12_precip_mm": sample_features["bio12_annual_precip"],
+                "bio15_precip_seas": sample_features["bio15_precip_seasonality"],
+            }
+        ),
         shap_values={col: round(float(val), 4) for col, val in zip(FEATURE_COLUMNS, shap_vals)},
     )
 
@@ -182,7 +186,9 @@ def predict_cloud(request: InferenceRequest):
         ppt = extracted["ppt"]
         bio12 = float(ppt.groupby("time.year").sum(dim="time").mean(dim="year").values)
         monthly_ppt = ppt.groupby("time.month").mean(dim="time")
-        bio15 = float((monthly_ppt.std(dim="month") / (monthly_ppt.mean(dim="month") + 1e-6)).values * 100)
+        bio15 = float(
+            (monthly_ppt.std(dim="month") / (monthly_ppt.mean(dim="month") + 1e-6)).values * 100
+        )
 
         dynamic_features = {
             "elevation": elevation,
@@ -196,20 +202,24 @@ def predict_cloud(request: InferenceRequest):
         input_df = pd.DataFrame([dynamic_features])[FEATURE_COLUMNS]
         prob = float(app_state["model"].predict_proba(input_df)[:, 1][0])
         shap_vals = app_state["explainer"](input_df).values[0]
-        level = RiskLevel.HIGH if prob >= 0.66 else RiskLevel.MEDIUM if prob >= 0.33 else RiskLevel.LOW
+        level = (
+            RiskLevel.HIGH if prob >= 0.66 else RiskLevel.MEDIUM if prob >= 0.33 else RiskLevel.LOW
+        )
 
         return InferenceResponse(
             risk_probability=round(prob, 4),
             risk_level=level if landcover == 10 else RiskLevel.NON_FOREST,
             is_forest=(landcover == 10),
-            extracted_features=ExtractedFeatures(**{
-                "elevation_m": dynamic_features["elevation"],
-                "landcover_class": dynamic_features["landcover_class"],
-                "bio1_temp_c": dynamic_features["bio1_mean_temp"],
-                "bio4_seasonality": dynamic_features["bio4_temp_seasonality"],
-                "bio12_precip_mm": dynamic_features["bio12_annual_precip"],
-                "bio15_precip_seas": dynamic_features["bio15_precip_seasonality"]
-            }),
+            extracted_features=ExtractedFeatures(
+                **{
+                    "elevation_m": dynamic_features["elevation"],
+                    "landcover_class": dynamic_features["landcover_class"],
+                    "bio1_temp_c": dynamic_features["bio1_mean_temp"],
+                    "bio4_seasonality": dynamic_features["bio4_temp_seasonality"],
+                    "bio12_precip_mm": dynamic_features["bio12_annual_precip"],
+                    "bio15_precip_seas": dynamic_features["bio15_precip_seasonality"],
+                }
+            ),
             shap_values={col: round(float(val), 4) for col, val in zip(FEATURE_COLUMNS, shap_vals)},
         )
 

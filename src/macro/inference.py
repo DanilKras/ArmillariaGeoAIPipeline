@@ -128,11 +128,15 @@ def generate_risk_map() -> None:
     start_date = config["temporal"]["start_date"]
     end_date = config["temporal"]["end_date"]
 
-    ds_sub = ds[["tmax", "tmin", "ppt"]].sel(
-        time=slice(start_date, end_date),
-        lat=lat_slice,
-        lon=lon_slice,
-    ).compute()
+    ds_sub = (
+        ds[["tmax", "tmin", "ppt"]]
+        .sel(
+            time=slice(start_date, end_date),
+            lat=lat_slice,
+            lon=lon_slice,
+        )
+        .compute()
+    )
 
     tmean_coarse = (ds_sub["tmax"] + ds_sub["tmin"]) * 0.5 * 0.1
     ppt_coarse = ds_sub["ppt"]
@@ -183,20 +187,20 @@ def generate_risk_map() -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
     with rasterio.open(
-            output_file,
-            "w",
-            driver="GTiff",
-            height=dem_shape[0],
-            width=dem_shape[1],
-            count=1,
-            dtype=np.float32,
-            crs=dem_crs,
-            transform=transform,
-            nodata=-9999.0,
-            compress="deflate",
-            tiled=True,
-            blockxsize=256,
-            blockysize=256,
+        output_file,
+        "w",
+        driver="GTiff",
+        height=dem_shape[0],
+        width=dem_shape[1],
+        count=1,
+        dtype=np.float32,
+        crs=dem_crs,
+        transform=transform,
+        nodata=-9999.0,
+        compress="deflate",
+        tiled=True,
+        blockxsize=256,
+        blockysize=256,
     ) as dst:
         dst.write(risk_matrix, 1)
 

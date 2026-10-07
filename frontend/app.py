@@ -215,7 +215,9 @@ top_col1, top_col2 = st.columns([2, 1], gap="medium")
 
 with top_col2:
     st.subheader("Controls & Inspection")
-    st.write(f"**Lat:** `{st.session_state.target_lat:.5f}` | **Lon:** `{st.session_state.target_lon:.5f}`")
+    st.write(
+        f"**Lat:** `{st.session_state.target_lat:.5f}` | **Lon:** `{st.session_state.target_lon:.5f}`"
+    )
 
     st.markdown("##### Inference Engine")
     engine_mode = st.radio(
@@ -223,25 +225,30 @@ with top_col2:
         options=["⚡ Local Edge (Sopron Forest)", "☁️ Cloud Streaming (Global)"],
         captions=[
             "Latency: <50ms. Uses precomputed cache.",
-            "Latency: ~30s. Live STAC & Zarr queries."
+            "Latency: ~30s. Live STAC & Zarr queries.",
         ],
-        index=0
+        index=0,
     )
 
     is_sopron_mode = "Local" in engine_mode
     in_bounds = (
-            BBOX_SOPRON["min_lat"] <= st.session_state.target_lat <= BBOX_SOPRON["max_lat"]
-            and BBOX_SOPRON["min_lon"] <= st.session_state.target_lon <= BBOX_SOPRON["max_lon"]
+        BBOX_SOPRON["min_lat"] <= st.session_state.target_lat <= BBOX_SOPRON["max_lat"]
+        and BBOX_SOPRON["min_lon"] <= st.session_state.target_lon <= BBOX_SOPRON["max_lon"]
     )
 
     if is_sopron_mode and not in_bounds:
         st.warning(
-            "⚠️ Target is outside the Sopron precomputed extent. Switch to 'Cloud Streaming' for global inference.")
+            "⚠️ Target is outside the Sopron precomputed extent. Switch to 'Cloud Streaming' for global inference."
+        )
         st.button("Run Spatial Inference", disabled=True, use_container_width=True)
     else:
         if st.button("Run Spatial Inference", type="primary", use_container_width=True):
             target_endpoint = PREDICT_URL_LOCAL if is_sopron_mode else PREDICT_URL_CLOUD
-            loading_msg = "Querying local cache..." if is_sopron_mode else "Extracting STAC assets & streaming Zarr (~30s)..."
+            loading_msg = (
+                "Querying local cache..."
+                if is_sopron_mode
+                else "Extracting STAC assets & streaming Zarr (~30s)..."
+            )
 
             with st.spinner(loading_msg):
                 try:
@@ -272,9 +279,9 @@ with top_col2:
                                 "bio1_temp_c": feats.get("bio1_temp_c", 0.0),
                             }
                             if not any(
-                                    abs(p["lat"] - new_entry["lat"]) < 1e-5
-                                    and abs(p["lon"] - new_entry["lon"]) < 1e-5
-                                    for p in st.session_state.prediction_history
+                                abs(p["lat"] - new_entry["lat"]) < 1e-5
+                                and abs(p["lon"] - new_entry["lon"]) < 1e-5
+                                for p in st.session_state.prediction_history
                             ):
                                 st.session_state.prediction_history.append(new_entry)
                 except requests.exceptions.RequestException as e:
@@ -352,8 +359,8 @@ with top_col1:
         c_lat = map_data["last_clicked"]["lat"]
         c_lon = map_data["last_clicked"]["lng"]
         if (
-                abs(c_lat - st.session_state.target_lat) > 1e-5
-                or abs(c_lon - st.session_state.target_lon) > 1e-5
+            abs(c_lat - st.session_state.target_lat) > 1e-5
+            or abs(c_lon - st.session_state.target_lon) > 1e-5
         ):
             st.session_state.target_lat = c_lat
             st.session_state.target_lon = c_lon
@@ -426,7 +433,10 @@ if st.session_state.inference_results:
                 c1.metric("Mean Temp", f"{feats.get('bio1_temp_c', 0):.1f} °C")
                 c1.metric("Temp Seasonality", f"{feats.get('bio4_seasonality', 0):.0f}")
             with c2:
-                c2.metric("Land Cover", "Forest (Class 10)" if feats.get('landcover_class') == 10 else "Other")
+                c2.metric(
+                    "Land Cover",
+                    "Forest (Class 10)" if feats.get("landcover_class") == 10 else "Other",
+                )
                 c2.metric("Annual Precip", f"{feats.get('bio12_precip_mm', 0):.0f} mm")
                 c2.metric("Precip Seasonality", f"{feats.get('bio15_precip_seas', 0):.1f}")
         else:

@@ -103,17 +103,19 @@ def extract_from_local(file_path: Path, target_species: str) -> pd.DataFrame:
         if gdf.crs and gdf.crs.to_epsg() != 4326:
             gdf = gdf.to_crs(epsg=4326)
 
-        df = pd.DataFrame({
-            "gbif_id": [f"local_{i}" for i in range(len(gdf))],
-            "species": target_species,
-            "country": "Hungary",
-            "lat": gdf.geometry.y,
-            "lon": gdf.geometry.x,
-            "year": gdf.get("year", None),
-            "basis_of_record": "FIELD_OBSERVATION",
-            "coordinate_uncertainty_m": 10.0,
-            "target": 1,
-        })
+        df = pd.DataFrame(
+            {
+                "gbif_id": [f"local_{i}" for i in range(len(gdf))],
+                "species": target_species,
+                "country": "Hungary",
+                "lat": gdf.geometry.y,
+                "lon": gdf.geometry.x,
+                "year": gdf.get("year", None),
+                "basis_of_record": "FIELD_OBSERVATION",
+                "coordinate_uncertainty_m": 10.0,
+                "target": 1,
+            }
+        )
     else:
         df = pd.read_csv(file_path)
         df["target"] = 1
