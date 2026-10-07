@@ -222,7 +222,7 @@ with top_col2:
     st.markdown("##### Inference Engine")
     engine_mode = st.radio(
         "Backend Routing:",
-        options=["⚡ Local Edge (Sopron Forest)", "☁️ Cloud Streaming (Global)"],
+        options=["Local Edge (Sopron Forest)", "Cloud Streaming (Global)"],
         captions=[
             "Latency: <50ms. Uses precomputed cache.",
             "Latency: ~30s. Live STAC & Zarr queries.",
