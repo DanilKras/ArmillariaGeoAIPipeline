@@ -4,84 +4,92 @@
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-This project is a geospatial machine learning pipeline designed to model and map potential infection risks of
-*Armillaria ostoyae* in forest ecosystems, with a target validation area in the Sopron / Lake Fertő region.
+This project is a geospatial machine learning pipeline designed to model and map potential infection risks of *Armillaria ostoyae* in forest ecosystems, with a target validation area in the Sopron / Lake Fertő region.
 
-The goal is to demonstrate a production-ready, cloud-native GeoAI workflow utilizing STAC catalogs, Zarr cloud data
-stores, and spatial cross-validation to account for spatial autocorrelation.
+The goal is to demonstrate a production-ready, cloud-native GeoAI workflow utilizing STAC catalogs, Zarr cloud data stores, and spatial cross-validation to account for spatial autocorrelation.
 
 ---
 
 ## Overview
 
-The pipeline automates raw biodiversity data ingestion, cloud-based environmental feature extraction, spatial machine
-learning validation, regional raster inference, and interactive serving.
+The pipeline automates raw biodiversity data ingestion, cloud-based environmental feature extraction, spatial machine learning validation, regional raster inference, and interactive serving.
 
 ### Core Stages
 
-1. **Occurrence Ingestion:** Fetches verified *Armillaria ostoyae* presence records from the GBIF API, filtering for
-   coordinate uncertainty $\le 250\text{ m}$.
-2. **Spatial Rarefaction:** Thins occurrences to a 1×1 km metric grid (EPSG:3035) to mitigate opportunistic
-   citizen-science sampling clustering.
-3. **Pseudo-Absence Sampling:** Generates a balanced 1:1 synthetic absence dataset ($>5\text{ km}$ buffer from observed
-   presences) using spatial indexing via `scipy.spatial.KDTree`.
+1. **Occurrence Ingestion:** Fetches verified *Armillaria ostoyae* presence records from the GBIF API, filtering for coordinate uncertainty $\le 250\text{ m}$.
+2. **Spatial Rarefaction:** Thins occurrences to a 1×1 km metric grid (EPSG:3035) to mitigate opportunistic citizen-science sampling clustering.
+3. **Pseudo-Absence Sampling:** Generates a balanced 1:1 synthetic absence dataset ($>5\text{ km}$ buffer from observed presences) using spatial indexing via `scipy.spatial.KDTree`.
 4. **Cloud Feature Store Extraction:**
     - **Elevation:** Copernicus GLO-30 DEM (30 m) via Microsoft Planetary Computer STAC.
     - **Land Cover Mask:** ESA WorldCover (10 m) mapped to identify forest canopy areas (Class 10).
-    - **Bioclimatic Predictors:** Long-term bioclimatic indices (`BIO1`, `BIO4`, `BIO12`, `BIO15`) streamed on demand
-      from TerraClimate Zarr arrays.
-5. **Spatial Cross-Validation:** Evaluates an XGBoost classifier with 5-fold `GroupKFold` over 150 km geographic blocks
-   (derived from elevation semivariogram sill analysis) to prevent spatial data leakage.
-6. **Inference & Serving:** Exports a high-resolution regional risk GeoTIFF raster (30 m) and serves point inferences
-   and SHAP explainability via a FastAPI backend and a Streamlit dashboard.
+    - **Bioclimatic Predictors:** Long-term bioclimatic indices (`BIO1`, `BIO4`, `BIO12`, `BIO15`) streamed on demand from TerraClimate Zarr arrays.
+5. **Spatial Cross-Validation:** Evaluates an XGBoost classifier with 5-fold `GroupKFold` over 150 km geographic blocks (derived from elevation semivariogram sill analysis) to prevent spatial data leakage.
+6. **Inference & Serving:** Exports a high-resolution regional risk GeoTIFF raster (30 m) and serves point inferences and SHAP explainability via a FastAPI backend and a Streamlit dashboard.
 
 ---
 
 ## Project Structure
 
 ```text
-├── .github/
-│   └── workflows/
-│       └── ci.yml                  # GitHub Actions CI (Ruff, Pytest, Docker build)
-├── api/                            # FastAPI backend
+├── .cadence/                       # Cadence configurations (if applicable)
+├── .dvc/                           # Data Version Control internal files
+├── .github/workflows/ci.yml        # GitHub Actions CI (Ruff, Pytest, Docker build)
+├── api/                            # FastAPI backend service
 │   ├── Dockerfile
 │   ├── main.py                     # Inference and field feedback endpoints
 │   ├── requirements.txt
-│   └── schemas.py                  # Pydantic data schemas
+│   └── schemas.py                  # Pydantic data schemas for validation
 ├── config/
 │   └── params.yaml                 # Centralized pipeline configuration
 ├── dags/
 │   └── armillaria_pipeline_dag.py  # Apache Airflow orchestration DAG
-├── data/
-│   ├── 01_raw.dvc                  # DVC-tracked raw occurrences
-│   ├── 02_processed.dvc            # DVC-tracked thinned & feature Parquet tables
-│   └── 03_results.dvc              # DVC-tracked GeoTIFF risk rasters & metrics
+├── data/                           # Data directory managed by DVC
+│   ├── 01_raw/                     # Raw fetched occurrences
+│   ├── 02_processed/               # Thinned features and Parquet tables
+│   ├── 03_results/                 # Outputs
+│   │   ├── figures/                # SHAP plots and visual metrics
+│   │   └── maps/                   # Generated GeoTIFF risk rasters
+│   ├── 01_raw.dvc                  # DVC tracking files
+│   ├── 02_processed.dvc            
+│   └── 03_results.dvc              
 ├── frontend/                       # Streamlit web application
 │   ├── app.py                      # Interactive Leaflet map & SHAP diagnostic plots
 │   ├── Dockerfile
 │   └── requirements.txt
+├── logs/                           # Airflow and execution logs
 ├── models/
-│   └── armillaria_spatial_xgb.json # Exported production XGBoost model
+│   └── armillaria_spatial_xgb.json # Exported production XGBoost model weights
 ├── notebooks/
 │   └── 01_eda_armillaria.ipynb     # Spatial EDA, variogram, and sampling analysis
-├── src/                            # Pipeline modules
-│   ├── macro/
+├── src/                            # Core pipeline modules
+│   ├── macro/                      # Macro-scale regional modeling
+│   │   ├── __init__.py
 │   │   ├── data_extraction.py      # GBIF API occurrence harvester
 │   │   ├── data_processing.py      # 1 km spatial rarefaction
-│   │   ├── negative_sampling.py    # KDTree ecological pseudo-absence generator
 │   │   ├── feature_extraction.py   # Planetary Computer DEM & Zarr bioclim extraction
+│   │   ├── inference.py            # Regional 30m GeoTIFF risk raster generation
 │   │   ├── model_training.py       # Spatial Block CV & XGBoost training
-│   │   └── inference.py            # Regional 30m GeoTIFF risk raster generation
-│   └── micro/
+│   │   └── negative_sampling.py    # KDTree ecological pseudo-absence generator
+│   └── micro/                      # Micro-scale local modeling (Thesis Expansion)
+│       ├── __init__.py
 │       └── lidar_processor.py      # Micro-Scale LiDAR & 3D Point Cloud Processing
 ├── tests/                          # Automated Pytest test suite
-├── utils/
-│   └── config_loader.py            # Dynamic YAML configuration loader
-├── docker-compose.yaml
-├── pyproject.toml
+│   ├── test_config.py
+│   └── test_negative_sampling.py
+├── utils/                          # Shared utilities
+│   ├── config_loader.py            # Dynamic YAML configuration loader
+│   └── logger.py                   # Centralized logging setup
+├── .dockerignore                   # Docker exclusion rules
+├── .dvcignore                      # DVC exclusion rules
+├── .gitignore                      # Git exclusion rules
+├── airflow-requirements.txt        # Specific dependencies for Airflow
+├── docker-compose.yaml             # Multi-container orchestration (API, Frontend, Airflow)
+├── Dockerfile                      # Root Dockerfile for pipeline execution
+├── pyproject.toml                  # Python project metadata and tooling config (Ruff, Pytest)
+├── README.md                       # Project documentation
+├── requirements.txt                # Global project dependencies
 ├── run_pipeline.py                 # Standalone CLI pipeline runner
-├── uv.lock
-└── README.md
+└── uv.lock                         # uv lockfile for deterministic dependency resolution
 ```
 
 ## Installation & Setup
