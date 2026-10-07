@@ -397,12 +397,12 @@ if st.session_state.inference_results:
             )
             if prob >= 0.66:
                 st.markdown(
-                    '<div class="risk-banner risk-high">⚠️ High Risk Zone</div>',
+                    '<div class="risk-banner risk-high">High Risk Zone</div>',
                     unsafe_allow_html=True,
                 )
             elif prob >= 0.33:
                 st.markdown(
-                    '<div class="risk-banner risk-medium">⚡ Moderate Risk Zone</div>',
+                    '<div class="risk-banner risk-medium">Moderate Risk Zone</div>',
                     unsafe_allow_html=True,
                 )
             else:
@@ -435,7 +435,7 @@ if st.session_state.inference_results:
             with c2:
                 c2.metric(
                     "Land Cover",
-                    "Forest (Class 10)" if feats.get("landcover_class") == 10 else "Other",
+                    "Forest" if feats.get("landcover_class") == 10 else "Other",
                 )
                 c2.metric("Annual Precip", f"{feats.get('bio12_precip_mm', 0):.0f} mm")
                 c2.metric("Precip Seasonality", f"{feats.get('bio15_precip_seas', 0):.1f}")
