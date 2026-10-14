@@ -37,27 +37,22 @@ class RiskLevel(str, Enum):
 
 
 class ExtractedFeatures(BaseModel):
-    elevation_m: float = Field(
-        ..., description="Copernicus DEM 30m altitude in meters", examples=[420.5]
-    )
-    landcover_class: int = Field(
-        ..., description="ESA WorldCover class code (10 = Tree cover)", examples=[10]
-    )
-    bio1_temp_c: float = Field(
-        ..., description="Annual Mean Temperature in Celsius (BIO1)", examples=[9.82]
-    )
-    bio4_seasonality: float = Field(
-        ..., description="Temperature Seasonality (std dev * 100) (BIO4)", examples=[685.2]
-    )
-    bio12_precip_mm: float = Field(
-        ..., description="Annual Cumulative Precipitation in mm (BIO12)", examples=[710.4]
-    )
-    bio15_precip_seas: float = Field(
-        ..., description="Precipitation Seasonality coefficient (BIO15)", examples=[24.8]
-    )
+    elevation_m: float = Field(..., description="Copernicus DEM 30m altitude in meters", examples=[420.5])
+    slope_deg: float = Field(..., description="Slope steepness in degrees", examples=[12.4])
+    northness_aspect: float = Field(..., description="Cosine of aspect (-1: South, 1: North)", examples=[0.75])
+    twi_moisture_index: float = Field(..., description="Topographic Wetness Index (TWI)", examples=[6.8])
+    landcover_class: int = Field(..., description="ESA WorldCover class code (10 = Tree cover)", examples=[10])
+    bio1_temp_c: float = Field(..., description="Annual Mean Temperature in Celsius (BIO1)", examples=[9.82])
+    bio4_seasonality: float = Field(..., description="Temperature Seasonality (std dev * 100) (BIO4)", examples=[685.2])
+    bio12_precip_mm: float = Field(..., description="Annual Cumulative Precipitation in mm (BIO12)", examples=[710.4])
+    bio15_precip_seas: float = Field(..., description="Precipitation Seasonality coefficient (BIO15)", examples=[24.8])
+    soil_ph: float = Field(..., description="ISRIC SoilGrids 0-5cm pH in H2O", examples=[4.9])
+    soil_clay_percent: float = Field(..., description="ISRIC SoilGrids 0-5cm Clay content (%)", examples=[21.5])
 
 
 class InferenceRequest(BaseModel):
+    """Глобальный запрос координат (используется для Cloud Streaming)."""
+
     lat: float = Field(
         ...,
         description="Latitude in WGS84 coordinate system",
@@ -73,8 +68,12 @@ class InferenceRequest(BaseModel):
         examples=[16.5843],
     )
 
+
+class LocalInferenceRequest(InferenceRequest):
+    """Локальный запрос координат (строго валидируется по границам предрассчитанного растра)."""
+
     @model_validator(mode="after")
-    def validate_spatial_extent(self) -> "InferenceRequest":
+    def validate_spatial_extent(self) -> "LocalInferenceRequest":
         if not (MIN_LAT <= self.lat <= MAX_LAT and MIN_LON <= self.lon <= MAX_LON):
             raise ValueError(
                 f"Coordinates ({self.lat:.4f}, {self.lon:.4f}) are outside the study region envelope. "
@@ -111,12 +110,12 @@ class InferenceResponse(BaseModel):
     )
     extracted_features: Optional[ExtractedFeatures] = Field(
         default=None,
-        description="Extracted environmental and bioclimatic features (None if point is outside forest)",
+        description="Extracted 11-variable environmental profile (None if point is outside forest)",
     )
     shap_values: Dict[str, float] = Field(
         default_factory=dict,
         description="Local SHAP attributions (log-odds impact) for each feature",
-        examples=[{"bio12_annual_precip": 0.42, "elevation": -0.15}],
+        examples=[{"twi_moisture_index": 0.35, "soil_ph": -0.18}],
     )
 
 

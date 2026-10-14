@@ -6,11 +6,16 @@ from pathlib import Path
 
 import folium
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import rasterio
 import requests
 import streamlit as st
+from folium.raster_layers import ImageOverlay
+from matplotlib import pyplot as plt
+from rasterio.enums import Resampling
 from shapely.geometry import shape
 from shapely.ops import unary_union
 from shapely.prepared import prep
@@ -37,17 +42,17 @@ st.markdown(
         div[data-testid="stMetric"] {
             background-color: #1e293b;
             border: 1px solid #334155;
-            padding: 12px 16px;
+            padding: 10px 14px;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         div[data-testid="stMetricValue"] { 
-            font-size: 1.5rem !important; 
+            font-size: 1.3rem !important; 
             font-weight: 700 !important; 
             color: #f8fafc !important; 
         }
         div[data-testid="stMetricLabel"] { 
-            font-size: 0.8rem !important; 
+            font-size: 0.75rem !important; 
             font-weight: 500 !important; 
             color: #94a3b8 !important; 
             text-transform: uppercase; 
@@ -119,6 +124,39 @@ def load_spatial_boundary(geojson_path: str):
     return data, prepared, leaflet_bounds
 
 
+@st.cache_data(show_spinner=False)
+def get_risk_raster_overlay(tif_path: str, is_delta: bool = False):
+    if not os.path.exists(tif_path):
+        return None, None
+    try:
+        with rasterio.open(tif_path) as src:
+            bounds = [[src.bounds.bottom, src.bounds.left], [src.bounds.top, src.bounds.right]]
+            data = src.read(
+                1,
+                out_shape=(max(1, src.height // 4), max(1, src.width // 4)),
+                resampling=Resampling.bilinear,
+            )
+
+            rgba = np.zeros((*data.shape, 4), dtype=np.uint8)
+
+            if is_delta:
+                mask = (data >= -1.0) & (data <= 1.0) & (data != -9999.0)
+                norm = plt.Normalize(vmin=-0.4, vmax=0.4)
+                cmap = plt.colormaps["bwr"]
+            else:
+                mask = (data >= 0.0) & (data <= 1.0) & (data != -9999.0)
+                norm = plt.Normalize(vmin=0.0, vmax=1.0)
+                cmap = plt.colormaps["YlOrRd"]
+
+            colored = (cmap(norm(data)) * 255).astype(np.uint8)
+            rgba[mask] = colored[mask]
+            rgba[~mask] = [0, 0, 0, 0]
+
+            return rgba, bounds
+    except Exception:
+        return None, None
+
+
 def export_history_to_gpkg(history_records: list) -> bytes:
     df = pd.DataFrame(history_records)
     gdf = gpd.GeoDataFrame(
@@ -174,7 +212,12 @@ def plot_shap_bar(shap_dict: dict):
         "bio12_annual_precip": "Annual Precip (BIO12)",
         "bio15_precip_seasonality": "Precip Seasonality (BIO15)",
         "elevation": "Elevation (DEM)",
+        "slope_deg": "Slope (°)",
+        "northness_aspect": "Aspect (Northness)",
+        "twi_moisture_index": "Moisture (TWI)",
         "landcover_class": "Land Cover",
+        "soil_ph": "Soil pH",
+        "soil_clay_percent": "Soil Clay (%)",
     }
     df = pd.DataFrame(
         [{"Feature": friendly_names.get(k, k), "SHAP Value": v} for k, v in shap_dict.items()]
@@ -192,7 +235,7 @@ def plot_shap_bar(shap_dict: dict):
         color_discrete_map={"Increases Risk": "#ef4444", "Decreases Risk": "#3b82f6"},
     )
     fig.update_layout(
-        height=190,
+        height=260,
         margin=dict(l=5, r=5, t=5, b=5),
         showlegend=False,
         xaxis_title="Attribution (Log-odds)",
@@ -219,12 +262,24 @@ with top_col2:
         f"**Lat:** `{st.session_state.target_lat:.5f}` | **Lon:** `{st.session_state.target_lon:.5f}`"
     )
 
+    st.markdown("##### Climate Horizon (CMIP6)")
+    selected_scenario = st.selectbox(
+        "Ecological Niche Projection:",
+        options=[
+            "Baseline (Current Climate)",
+            "SSP2-4.5 (2050 Horizon)",
+            "SSP5-8.5 (2050 Extreme)",
+            "Delta Shift: SSP5-8.5 vs Baseline",
+        ],
+        index=0,
+    )
+
     st.markdown("##### Inference Engine")
     engine_mode = st.radio(
         "Backend Routing:",
         options=["Local Edge (Sopron Forest)", "Cloud Streaming (Global)"],
         captions=[
-            "Latency: <50ms. Uses precomputed cache.",
+            "Latency: <50ms. Uses local 11-band stack.",
             "Latency: ~30s. Live STAC & Zarr queries.",
         ],
         index=0,
@@ -232,22 +287,23 @@ with top_col2:
 
     is_sopron_mode = "Local" in engine_mode
     in_bounds = (
-        BBOX_SOPRON["min_lat"] <= st.session_state.target_lat <= BBOX_SOPRON["max_lat"]
-        and BBOX_SOPRON["min_lon"] <= st.session_state.target_lon <= BBOX_SOPRON["max_lon"]
+            BBOX_SOPRON["min_lat"] <= st.session_state.target_lat <= BBOX_SOPRON["max_lat"]
+            and BBOX_SOPRON["min_lon"] <= st.session_state.target_lon <= BBOX_SOPRON["max_lon"]
     )
 
     if is_sopron_mode and not in_bounds:
         st.warning(
-            "⚠️ Target is outside the Sopron precomputed extent. Switch to 'Cloud Streaming' for global inference."
+            "Target is outside the Sopron precomputed extent. Switch to 'Cloud Streaming' for global inference."
         )
         st.button("Run Spatial Inference", disabled=True, use_container_width=True)
     else:
         if st.button("Run Spatial Inference", type="primary", use_container_width=True):
             target_endpoint = PREDICT_URL_LOCAL if is_sopron_mode else PREDICT_URL_CLOUD
+            call_timeout = 10 if is_sopron_mode else 120
             loading_msg = (
-                "Querying local cache..."
+                "Querying local feature stack..."
                 if is_sopron_mode
-                else "Extracting STAC assets & streaming Zarr (~30s)..."
+                else "Extracting STAC assets & streaming Zarr..."
             )
 
             with st.spinner(loading_msg):
@@ -258,7 +314,7 @@ with top_col2:
                             "lat": st.session_state.target_lat,
                             "lon": st.session_state.target_lon,
                         },
-                        timeout=45,
+                        timeout=call_timeout,
                     )
                     if resp.status_code == 422:
                         st.error(f"Validation Error: {resp.json().get('detail')}")
@@ -279,9 +335,9 @@ with top_col2:
                                 "bio1_temp_c": feats.get("bio1_temp_c", 0.0),
                             }
                             if not any(
-                                abs(p["lat"] - new_entry["lat"]) < 1e-5
-                                and abs(p["lon"] - new_entry["lon"]) < 1e-5
-                                for p in st.session_state.prediction_history
+                                    abs(p["lat"] - new_entry["lat"]) < 1e-5
+                                    and abs(p["lon"] - new_entry["lon"]) < 1e-5
+                                    for p in st.session_state.prediction_history
                             ):
                                 st.session_state.prediction_history.append(new_entry)
                 except requests.exceptions.RequestException as e:
@@ -301,13 +357,37 @@ with top_col1:
         attr="Esri Satellite",
         name="Satellite (Esri)",
         overlay=False,
+        control=True,
     ).add_to(m)
 
     folium.TileLayer(
         tiles="OpenStreetMap",
         name="Topography (OSM)",
         overlay=False,
+        control=True,
     ).add_to(m)
+
+    scenario_map_files = {
+        "Baseline (Current Climate)": ("data/03_results/maps/sopron_armillaria_risk.tif", False),
+        "SSP2-4.5 (2050 Horizon)": ("data/03_results/maps/sopron_armillaria_risk_ssp245_2050.tif", False),
+        "SSP5-8.5 (2050 Extreme)": ("data/03_results/maps/sopron_armillaria_risk_ssp585_2050.tif", False),
+        "Delta Shift: SSP5-8.5 vs Baseline": ("data/03_results/maps/sopron_armillaria_delta_ssp585_2050.tif", True),
+    }
+
+    tif_target, is_delta_mode = scenario_map_files.get(
+        selected_scenario, ("data/03_results/maps/sopron_armillaria_risk.tif", False)
+    )
+    risk_img, r_bounds = get_risk_raster_overlay(tif_target, is_delta=is_delta_mode)
+
+    if risk_img is not None:
+        ImageOverlay(
+            image=risk_img,
+            bounds=r_bounds,
+            opacity=0.65,
+            name=f"{selected_scenario} Layer",
+            overlay=True,
+            interactive=False,
+        ).add_to(m)
 
     if raw_geojson:
         folium.GeoJson(
@@ -359,8 +439,8 @@ with top_col1:
         c_lat = map_data["last_clicked"]["lat"]
         c_lon = map_data["last_clicked"]["lng"]
         if (
-            abs(c_lat - st.session_state.target_lat) > 1e-5
-            or abs(c_lon - st.session_state.target_lon) > 1e-5
+                abs(c_lat - st.session_state.target_lat) > 1e-5
+                or abs(c_lon - st.session_state.target_lon) > 1e-5
         ):
             st.session_state.target_lat = c_lat
             st.session_state.target_lon = c_lon
@@ -379,7 +459,7 @@ if st.session_state.inference_results:
     prob = float(res.get("risk_probability", 0.0))
     is_forest = res.get("is_forest", True)
 
-    b_col1, b_col2, b_col3 = st.columns([1.1, 1.8, 1.4], gap="medium")
+    b_col1, b_col2, b_col3 = st.columns([1.0, 1.8, 1.6], gap="medium")
 
     with b_col1:
         st.markdown("### Infection Probability")
@@ -424,21 +504,27 @@ if st.session_state.inference_results:
             st.info("SHAP attribution unavailable for non-forest points.")
 
     with b_col3:
-        st.markdown("### Extracted Predictors")
+        st.markdown("### Extracted Predictors (11 Variables)")
         feats = res.get("extracted_features")
         if is_forest and feats:
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             with c1:
-                c1.metric("Elevation", f"{feats.get('elevation_m', 0):.0f} m")
-                c1.metric("Mean Temp", f"{feats.get('bio1_temp_c', 0):.1f} °C")
-                c1.metric("Temp Seasonality", f"{feats.get('bio4_seasonality', 0):.0f}")
+                st.caption("Topography")
+                st.metric("Elevation", f"{feats.get('elevation_m', 0):.0f} m")
+                st.metric("Slope", f"{feats.get('slope_deg', 0):.1f}°")
+                st.metric("Northness", f"{feats.get('northness_aspect', 0):.2f}")
+                st.metric("TWI", f"{feats.get('twi_moisture_index', 0):.1f}")
             with c2:
-                c2.metric(
-                    "Land Cover",
-                    "Forest" if feats.get("landcover_class") == 10 else "Other",
-                )
-                c2.metric("Annual Precip", f"{feats.get('bio12_precip_mm', 0):.0f} mm")
-                c2.metric("Precip Seasonality", f"{feats.get('bio15_precip_seas', 0):.1f}")
+                st.caption("Climate (30y)")
+                st.metric("Mean Temp", f"{feats.get('bio1_temp_c', 0):.1f} °C")
+                st.metric("Temp Seas.", f"{feats.get('bio4_seasonality', 0):.0f}")
+                st.metric("Ann. Precip", f"{feats.get('bio12_precip_mm', 0):.0f} mm")
+                st.metric("Precip Seas.", f"{feats.get('bio15_precip_seas', 0):.1f}")
+            with c3:
+                st.caption("Soil & Cover")
+                st.metric("Land Cover", "Forest" if feats.get("landcover_class") == 10 else "Other")
+                st.metric("Soil pH", f"{feats.get('soil_ph', 0):.2f}")
+                st.metric("Clay Content", f"{feats.get('soil_clay_percent', 0):.1f} %")
         else:
             st.caption("No biological features for non-forest pixels.")
 

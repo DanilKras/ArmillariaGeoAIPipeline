@@ -14,14 +14,15 @@ from src.macro.feature_extraction import run_advanced_feature_extraction
 from src.macro.inference import generate_risk_map
 from src.macro.model_training import train_spatial_sdm
 from src.macro.negative_sampling import generate_ecological_pseudo_absences
+from utils.generate_future_risk_maps import generate_future_projections
 
 default_args = {
     "owner": "danil",
     "depends_on_past": False,
     "email_on_failure": False,
     "email_on_retry": False,
-    "retries": 2,
-    "retry_delay": timedelta(minutes=2),
+    "retries": 1,
+    "retry_delay": timedelta(minutes=3),
     "retry_exponential_backoff": True,
 }
 
@@ -29,11 +30,11 @@ default_args = {
 @dag(
     dag_id="armillaria_geoai_pipeline",
     default_args=default_args,
-    description="End-to-End GeoAI pipeline for Armillaria ostoyae risk mapping",
+    description="End-to-End 11-Feature GeoAI pipeline with CMIP6 Climate Projections",
     schedule=None,
     start_date=datetime(2026, 1, 1),
     catchup=False,
-    tags=["geoai", "species-distribution", "xgboost", "planetary-computer"],
+    tags=["geoai", "species-distribution", "xgboost", "planetary-computer", "cmip6"],
 )
 def armillaria_geoai_dag():
     @task(task_id="extract_gbif_occurrences")
@@ -48,7 +49,7 @@ def armillaria_geoai_dag():
     def task_sampling():
         generate_ecological_pseudo_absences()
 
-    @task(task_id="cloud_feature_engineering")
+    @task(task_id="cloud_feature_engineering", execution_timeout=timedelta(hours=1))
     def task_features():
         run_advanced_feature_extraction()
 
@@ -60,14 +61,19 @@ def armillaria_geoai_dag():
     def task_infer():
         generate_risk_map()
 
+    @task(task_id="generate_cmip6_climate_projections")
+    def task_projections():
+        generate_future_projections()
+
     t1 = task_extract()
     t2 = task_thinning()
     t3 = task_sampling()
     t4 = task_features()
     t5 = task_train()
     t6 = task_infer()
+    t7 = task_projections()
 
-    t1 >> t2 >> t3 >> t4 >> t5 >> t6
+    t1 >> t2 >> t3 >> t4 >> t5 >> t6 >> t7
 
 
 dag_instance = armillaria_geoai_dag()

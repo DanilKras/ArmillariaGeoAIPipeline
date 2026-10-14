@@ -8,6 +8,7 @@ import pandas as pd
 import planetary_computer
 import pystac_client
 import rasterio
+import requests
 import urllib3
 import xarray as xr
 from pystac_client.stac_api_io import StacApiIO
@@ -17,18 +18,21 @@ from utils.config_loader import load_config
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
-
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def extract_point_from_raster(row, catalog, env_kwargs):
     """
-    Extracts elevation and landcover class for a given point (lat, lon) from the specified STAC catalog.
+    Extracts terrain features for a given point from Copernicus DEM and ESA WorldCover.
     """
     lat, lon = row["lat"], row["lon"]
     point_geom = {"type": "Point", "coordinates": [lon, lat]}
+    cell_size_m = 30.0
 
     elevation = None
+    slope_deg = None
+    northness = None
+    twi = None
     landcover = None
 
     try:
@@ -38,8 +42,27 @@ def extract_point_from_raster(row, catalog, env_kwargs):
             dem_href = items_dem[0].assets["data"].href
             with rasterio.Env(**env_kwargs):
                 with rasterio.open(dem_href) as src:
-                    for val in src.sample([(lon, lat)]):
-                        elevation = float(val[0])
+                    py, px = src.index(lon, lat)
+                    window = rasterio.windows.Window(px - 1, py - 1, 3, 3)
+                    win_data = src.read(1, window=window).astype(np.float32)
+
+                    if win_data.shape == (3, 3) and not np.isnan(win_data).any():
+                        elevation = float(win_data[1, 1])
+                        dy = (win_data[2, 1] - win_data[0, 1]) / (2.0 * cell_size_m)
+                        dx = (win_data[1, 2] - win_data[1, 0]) / (2.0 * cell_size_m)
+
+                        slope_rad = np.arctan(np.sqrt(dx ** 2 + dy ** 2))
+                        slope_deg = float(np.degrees(slope_rad))
+
+                        aspect_rad = np.arctan2(-dy, dx)
+                        northness = float(np.cos(aspect_rad))
+
+                        slope_safe = max(float(slope_rad), 0.001)
+                        twi_val = np.log(cell_size_m / np.tan(slope_safe))
+                        twi = float(np.clip(twi_val, 0.0, 15.0))
+                    else:
+                        elevation = float(next(src.sample([(lon, lat)]))[0])
+                        slope_deg, northness, twi = 0.0, 0.0, 5.0
 
         search_lc = catalog.search(collections=["esa-worldcover"], intersects=point_geom)
         items_lc = list(search_lc.items())
@@ -47,44 +70,12 @@ def extract_point_from_raster(row, catalog, env_kwargs):
             lc_href = items_lc[0].assets["map"].href
             with rasterio.Env(**env_kwargs):
                 with rasterio.open(lc_href) as src:
-                    for val in src.sample([(lon, lat)]):
-                        landcover = int(val[0])
+                    landcover = int(next(src.sample([(lon, lat)]))[0])
 
     except Exception as e:
-        logger.warning(f"Failed to extract DEM/LC for gbif_id {row.get('gbif_id')}: {e}")
+        logger.warning(f"Failed extraction for gbif_id {row.get('gbif_id')}: {e}")
 
-    return row["gbif_id"], elevation, landcover
-
-
-def extract_sentinel2_indices(row, catalog, config):
-    """
-    Draft: Extraction of optical indices (NDVI, NDMI) with cloud filtering.
-    """
-    lat, lon = row["lat"], row["lon"]
-    point_geom = {"type": "Point", "coordinates": [lon, lat]}
-
-    start_date = config["temporal"]["start_date"]
-    end_date = config["temporal"]["end_date"]
-    max_cloud = config["sentinel2"]["max_cloud_cover"]
-
-    try:
-        search = catalog.search(
-            collections=["sentinel-2-l2a"],
-            intersects=point_geom,
-            datetime=f"{start_date}/{end_date}",
-            query={"eo:cloud_cover": {"lt": max_cloud}},
-        )
-        items = list(search.items())
-
-        if not items:
-            return row["gbif_id"], np.nan, np.nan
-
-        # TODO: Sentinel-2 logic
-
-    except Exception as e:
-        logger.warning(f"Failed to extract Sentinel-2 for gbif_id {row.get('gbif_id')}: {e}")
-
-    return row["gbif_id"], None, None
+    return row["gbif_id"], elevation, slope_deg, northness, twi, landcover
 
 
 def run_advanced_feature_extraction() -> pd.DataFrame:
@@ -119,30 +110,35 @@ def run_advanced_feature_extraction() -> pd.DataFrame:
         logger.info(f"Loading input samples: {input_path}")
         df = pd.read_csv(input_path)
 
-        logger.info(f"Querying DEM & Landcover for {len(df)} points...")
+        logger.info(f"Querying DEM morphometry & WorldCover for {len(df)} points...")
         terrain_results = []
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=8) as executor:
             futures = [
                 executor.submit(extract_point_from_raster, row, catalog, env_kwargs)
                 for _, row in df.iterrows()
             ]
             for f in tqdm(as_completed(futures), total=len(df), desc="DEM & WorldCover"):
-                gbif_id, elev, lc = f.result()
+                gbif_id, elev, slope, north, twi, lc = f.result()
                 terrain_results.append(
-                    {"gbif_id": gbif_id, "elevation": elev, "landcover_class": lc}
+                    {
+                        "gbif_id": gbif_id,
+                        "elevation": elev,
+                        "slope_deg": slope,
+                        "northness_aspect": north,
+                        "twi_moisture_index": twi,
+                        "landcover_class": lc,
+                    }
                 )
 
         df = df.merge(pd.DataFrame(terrain_results), on="gbif_id", how="left")
-        df = df.dropna(subset=["elevation", "landcover_class"])
+        df = df.dropna(subset=["elevation", "landcover_class", "slope_deg"])
         df = df[df["elevation"] > 0]
 
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_parquet(checkpoint_path, engine="pyarrow", compression="snappy")
         logger.info(f"Saved terrain checkpoint to: {checkpoint_path}")
 
-    logger.info(
-        f"Streaming TerraClimate variables ({climate_vars}) from {start_date} to {end_date}..."
-    )
+    logger.info(f"Streaming TerraClimate variables ({climate_vars}) from {start_date} to {end_date}...")
     collection = catalog.get_collection("terraclimate")
     zarr_url = collection.assets["zarr-https"].href
     signed_url = planetary_computer.sign(zarr_url)
@@ -165,8 +161,8 @@ def run_advanced_feature_extraction() -> pd.DataFrame:
         tmean = (extracted["tmax"] + extracted["tmin"]) * 0.5
         df["bio1_mean_temp"] = tmean.mean(dim="time").values
         df["bio4_temp_seasonality"] = (
-            tmean.groupby("time.month").mean(dim="time").std(dim="month").values
-        ) * 100
+                tmean.groupby("time.month").mean(dim="time").std(dim="month").values * 100
+        )
 
     if "ppt" in climate_vars:
         ppt = extracted["ppt"]
@@ -177,17 +173,55 @@ def run_advanced_feature_extraction() -> pd.DataFrame:
         cv_ppt = (monthly_ppt.std(dim="month") / (monthly_ppt.mean(dim="month") + 1e-6)) * 100
         df["bio15_precip_seasonality"] = cv_ppt.values
 
-    required_cols = ["elevation", "landcover_class"]
-    if "tmax" in climate_vars and "tmin" in climate_vars:
-        required_cols.extend(["bio1_mean_temp", "bio4_temp_seasonality"])
-    if "ppt" in climate_vars:
-        required_cols.extend(["bio12_annual_precip", "bio15_precip_seasonality"])
+    logger.info("Enriching observations with ISRIC SoilGrids 0-5cm properties...")
+    ph_vals, clay_vals = [], []
+    for _, row in tqdm(df.iterrows(), total=len(df), desc="SoilGrids Query"):
+        try:
+            r = requests.get(
+                "https://rest.isric.org/soilgrids/v2.0/properties/query",
+                params={
+                    "lon": row["lon"],
+                    "lat": row["lat"],
+                    "property": ["phh2o", "clay"],
+                    "depth": "0-5cm",
+                    "value": "mean",
+                },
+                timeout=4,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                layers = {p["name"]: p["depths"][0]["values"]["mean"] for p in data["properties"]["layers"]}
+                ph_vals.append(layers.get("phh2o", 50) / 10.0)
+                clay_vals.append(layers.get("clay", 220) / 10.0)
+            else:
+                ph_vals.append(5.0)
+                clay_vals.append(22.0)
+        except Exception:
+            ph_vals.append(5.0)
+            clay_vals.append(22.0)
+
+    df["soil_ph"] = ph_vals
+    df["soil_clay_percent"] = clay_vals
+
+    required_cols = [
+        "elevation",
+        "slope_deg",
+        "northness_aspect",
+        "twi_moisture_index",
+        "landcover_class",
+        "bio1_mean_temp",
+        "bio4_temp_seasonality",
+        "bio12_annual_precip",
+        "bio15_precip_seasonality",
+        "soil_ph",
+        "soil_clay_percent",
+    ]
 
     df_final = df.dropna(subset=required_cols)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df_final.to_parquet(output_path, engine="pyarrow", compression="snappy")
 
-    logger.info(f"Features successfully saved to: {output_path} (Records: {len(df_final)})")
+    logger.info(f"11 Features successfully saved to: {output_path} (Records: {len(df_final)})")
     return df_final
 
 
