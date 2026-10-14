@@ -51,7 +51,7 @@ def extract_point_from_raster(row, catalog, env_kwargs):
                         dy = (win_data[2, 1] - win_data[0, 1]) / (2.0 * cell_size_m)
                         dx = (win_data[1, 2] - win_data[1, 0]) / (2.0 * cell_size_m)
 
-                        slope_rad = np.arctan(np.sqrt(dx ** 2 + dy ** 2))
+                        slope_rad = np.arctan(np.sqrt(dx**2 + dy**2))
                         slope_deg = float(np.degrees(slope_rad))
 
                         aspect_rad = np.arctan2(-dy, dx)
@@ -138,7 +138,9 @@ def run_advanced_feature_extraction() -> pd.DataFrame:
         df.to_parquet(checkpoint_path, engine="pyarrow", compression="snappy")
         logger.info(f"Saved terrain checkpoint to: {checkpoint_path}")
 
-    logger.info(f"Streaming TerraClimate variables ({climate_vars}) from {start_date} to {end_date}...")
+    logger.info(
+        f"Streaming TerraClimate variables ({climate_vars}) from {start_date} to {end_date}..."
+    )
     collection = catalog.get_collection("terraclimate")
     zarr_url = collection.assets["zarr-https"].href
     signed_url = planetary_computer.sign(zarr_url)
@@ -161,7 +163,7 @@ def run_advanced_feature_extraction() -> pd.DataFrame:
         tmean = (extracted["tmax"] + extracted["tmin"]) * 0.5
         df["bio1_mean_temp"] = tmean.mean(dim="time").values
         df["bio4_temp_seasonality"] = (
-                tmean.groupby("time.month").mean(dim="time").std(dim="month").values * 100
+            tmean.groupby("time.month").mean(dim="time").std(dim="month").values * 100
         )
 
     if "ppt" in climate_vars:
@@ -190,7 +192,10 @@ def run_advanced_feature_extraction() -> pd.DataFrame:
             )
             if r.status_code == 200:
                 data = r.json()
-                layers = {p["name"]: p["depths"][0]["values"]["mean"] for p in data["properties"]["layers"]}
+                layers = {
+                    p["name"]: p["depths"][0]["values"]["mean"]
+                    for p in data["properties"]["layers"]
+                }
                 ph_vals.append(layers.get("phh2o", 50) / 10.0)
                 clay_vals.append(layers.get("clay", 220) / 10.0)
             else:

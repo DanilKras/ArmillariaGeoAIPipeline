@@ -37,17 +37,35 @@ class RiskLevel(str, Enum):
 
 
 class ExtractedFeatures(BaseModel):
-    elevation_m: float = Field(..., description="Copernicus DEM 30m altitude in meters", examples=[420.5])
+    elevation_m: float = Field(
+        ..., description="Copernicus DEM 30m altitude in meters", examples=[420.5]
+    )
     slope_deg: float = Field(..., description="Slope steepness in degrees", examples=[12.4])
-    northness_aspect: float = Field(..., description="Cosine of aspect (-1: South, 1: North)", examples=[0.75])
-    twi_moisture_index: float = Field(..., description="Topographic Wetness Index (TWI)", examples=[6.8])
-    landcover_class: int = Field(..., description="ESA WorldCover class code (10 = Tree cover)", examples=[10])
-    bio1_temp_c: float = Field(..., description="Annual Mean Temperature in Celsius (BIO1)", examples=[9.82])
-    bio4_seasonality: float = Field(..., description="Temperature Seasonality (std dev * 100) (BIO4)", examples=[685.2])
-    bio12_precip_mm: float = Field(..., description="Annual Cumulative Precipitation in mm (BIO12)", examples=[710.4])
-    bio15_precip_seas: float = Field(..., description="Precipitation Seasonality coefficient (BIO15)", examples=[24.8])
+    northness_aspect: float = Field(
+        ..., description="Cosine of aspect (-1: South, 1: North)", examples=[0.75]
+    )
+    twi_moisture_index: float = Field(
+        ..., description="Topographic Wetness Index (TWI)", examples=[6.8]
+    )
+    landcover_class: int = Field(
+        ..., description="ESA WorldCover class code (10 = Tree cover)", examples=[10]
+    )
+    bio1_temp_c: float = Field(
+        ..., description="Annual Mean Temperature in Celsius (BIO1)", examples=[9.82]
+    )
+    bio4_seasonality: float = Field(
+        ..., description="Temperature Seasonality (std dev * 100) (BIO4)", examples=[685.2]
+    )
+    bio12_precip_mm: float = Field(
+        ..., description="Annual Cumulative Precipitation in mm (BIO12)", examples=[710.4]
+    )
+    bio15_precip_seas: float = Field(
+        ..., description="Precipitation Seasonality coefficient (BIO15)", examples=[24.8]
+    )
     soil_ph: float = Field(..., description="ISRIC SoilGrids 0-5cm pH in H2O", examples=[4.9])
-    soil_clay_percent: float = Field(..., description="ISRIC SoilGrids 0-5cm Clay content (%)", examples=[21.5])
+    soil_clay_percent: float = Field(
+        ..., description="ISRIC SoilGrids 0-5cm Clay content (%)", examples=[21.5]
+    )
 
 
 class InferenceRequest(BaseModel):

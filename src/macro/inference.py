@@ -78,7 +78,7 @@ def generate_risk_map() -> None:
 
     cell_size_m = 30.0
     dy, dx = np.gradient(elevation_matrix, cell_size_m, cell_size_m)
-    slope_rad = np.arctan(np.sqrt(dx ** 2 + dy ** 2))
+    slope_rad = np.arctan(np.sqrt(dx**2 + dy**2))
     slope_matrix = np.degrees(slope_rad).astype(np.float32)
 
     aspect_rad = np.arctan2(-dy, dx)
@@ -207,20 +207,20 @@ def generate_risk_map() -> None:
     output_tif.parent.mkdir(parents=True, exist_ok=True)
 
     with rasterio.open(
-            output_tif,
-            "w",
-            driver="GTiff",
-            height=dem_shape[0],
-            width=dem_shape[1],
-            count=1,
-            dtype=np.float32,
-            crs=dem_crs,
-            transform=transform,
-            nodata=-9999.0,
-            compress="deflate",
-            tiled=True,
-            blockxsize=256,
-            blockysize=256,
+        output_tif,
+        "w",
+        driver="GTiff",
+        height=dem_shape[0],
+        width=dem_shape[1],
+        count=1,
+        dtype=np.float32,
+        crs=dem_crs,
+        transform=transform,
+        nodata=-9999.0,
+        compress="deflate",
+        tiled=True,
+        blockxsize=256,
+        blockysize=256,
     ) as dst:
         dst.write(risk_matrix, 1)
     logger.info(f"Risk map successfully written to: {output_tif}")
@@ -243,18 +243,18 @@ def generate_risk_map() -> None:
 
     feature_stack_tif.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(
-            feature_stack_tif,
-            "w",
-            driver="GTiff",
-            height=dem_shape[0],
-            width=dem_shape[1],
-            count=len(feature_columns),
-            dtype=np.float32,
-            crs=dem_crs,
-            transform=transform,
-            nodata=-9999.0,
-            compress="deflate",
-            tiled=True,
+        feature_stack_tif,
+        "w",
+        driver="GTiff",
+        height=dem_shape[0],
+        width=dem_shape[1],
+        count=len(feature_columns),
+        dtype=np.float32,
+        crs=dem_crs,
+        transform=transform,
+        nodata=-9999.0,
+        compress="deflate",
+        tiled=True,
     ) as dst:
         for idx, (col_name, arr) in enumerate(zip(feature_columns, feature_arrays), start=1):
             layer = arr.copy()
@@ -262,7 +262,9 @@ def generate_risk_map() -> None:
             dst.write(layer, idx)
             dst.set_band_description(idx, col_name)
 
-    logger.info(f"Features stack ({len(feature_columns)} bands) successfully written to: {feature_stack_tif}")
+    logger.info(
+        f"Features stack ({len(feature_columns)} bands) successfully written to: {feature_stack_tif}"
+    )
 
 
 if __name__ == "__main__":

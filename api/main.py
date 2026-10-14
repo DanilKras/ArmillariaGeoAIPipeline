@@ -210,7 +210,7 @@ def predict_cloud(request: InferenceRequest):
                         cell_size = 30.0
                         dy = (win_data[2, 1] - win_data[0, 1]) / (2.0 * cell_size)
                         dx = (win_data[1, 2] - win_data[1, 0]) / (2.0 * cell_size)
-                        slope_rad = np.arctan(np.sqrt(dx ** 2 + dy ** 2))
+                        slope_rad = np.arctan(np.sqrt(dx**2 + dy**2))
                         slope_deg = float(np.degrees(slope_rad))
                         aspect_rad = np.arctan2(-dy, dx)
                         northness = float(np.cos(aspect_rad))
@@ -248,18 +248,29 @@ def predict_cloud(request: InferenceRequest):
         ppt = extracted["ppt"]
         bio12 = float(ppt.groupby("time.year").sum(dim="time").mean(dim="year").values)
         monthly_ppt = ppt.groupby("time.month").mean(dim="time")
-        bio15 = float((monthly_ppt.std(dim="month") / (monthly_ppt.mean(dim="month") + 1e-6)).values * 100)
+        bio15 = float(
+            (monthly_ppt.std(dim="month") / (monthly_ppt.mean(dim="month") + 1e-6)).values * 100
+        )
 
         soil_ph, soil_clay = 5.0, 22.0
         try:
             r = requests.get(
                 "https://rest.isric.org/soilgrids/v2.0/properties/query",
-                params={"lon": lon, "lat": lat, "property": ["phh2o", "clay"], "depth": "0-5cm", "value": "mean"},
+                params={
+                    "lon": lon,
+                    "lat": lat,
+                    "property": ["phh2o", "clay"],
+                    "depth": "0-5cm",
+                    "value": "mean",
+                },
                 timeout=4,
             )
             if r.status_code == 200:
                 data = r.json()
-                layers = {p["name"]: p["depths"][0]["values"]["mean"] for p in data["properties"]["layers"]}
+                layers = {
+                    p["name"]: p["depths"][0]["values"]["mean"]
+                    for p in data["properties"]["layers"]
+                }
                 soil_ph = layers.get("phh2o", 50) / 10.0
                 soil_clay = layers.get("clay", 220) / 10.0
         except Exception:
@@ -282,7 +293,9 @@ def predict_cloud(request: InferenceRequest):
         input_df = pd.DataFrame([dynamic_features])[FEATURE_COLUMNS]
         prob = float(app_state["model"].predict_proba(input_df)[:, 1][0])
         shap_vals = app_state["explainer"](input_df).values[0]
-        level = RiskLevel.HIGH if prob >= 0.66 else RiskLevel.MEDIUM if prob >= 0.33 else RiskLevel.LOW
+        level = (
+            RiskLevel.HIGH if prob >= 0.66 else RiskLevel.MEDIUM if prob >= 0.33 else RiskLevel.LOW
+        )
 
         return InferenceResponse(
             risk_probability=round(prob, 4),

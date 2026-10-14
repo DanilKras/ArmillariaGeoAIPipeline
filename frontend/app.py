@@ -287,8 +287,8 @@ with top_col2:
 
     is_sopron_mode = "Local" in engine_mode
     in_bounds = (
-            BBOX_SOPRON["min_lat"] <= st.session_state.target_lat <= BBOX_SOPRON["max_lat"]
-            and BBOX_SOPRON["min_lon"] <= st.session_state.target_lon <= BBOX_SOPRON["max_lon"]
+        BBOX_SOPRON["min_lat"] <= st.session_state.target_lat <= BBOX_SOPRON["max_lat"]
+        and BBOX_SOPRON["min_lon"] <= st.session_state.target_lon <= BBOX_SOPRON["max_lon"]
     )
 
     if is_sopron_mode and not in_bounds:
@@ -335,9 +335,9 @@ with top_col2:
                                 "bio1_temp_c": feats.get("bio1_temp_c", 0.0),
                             }
                             if not any(
-                                    abs(p["lat"] - new_entry["lat"]) < 1e-5
-                                    and abs(p["lon"] - new_entry["lon"]) < 1e-5
-                                    for p in st.session_state.prediction_history
+                                abs(p["lat"] - new_entry["lat"]) < 1e-5
+                                and abs(p["lon"] - new_entry["lon"]) < 1e-5
+                                for p in st.session_state.prediction_history
                             ):
                                 st.session_state.prediction_history.append(new_entry)
                 except requests.exceptions.RequestException as e:
@@ -369,9 +369,18 @@ with top_col1:
 
     scenario_map_files = {
         "Baseline (Current Climate)": ("data/03_results/maps/sopron_armillaria_risk.tif", False),
-        "SSP2-4.5 (2050 Horizon)": ("data/03_results/maps/sopron_armillaria_risk_ssp245_2050.tif", False),
-        "SSP5-8.5 (2050 Extreme)": ("data/03_results/maps/sopron_armillaria_risk_ssp585_2050.tif", False),
-        "Delta Shift: SSP5-8.5 vs Baseline": ("data/03_results/maps/sopron_armillaria_delta_ssp585_2050.tif", True),
+        "SSP2-4.5 (2050 Horizon)": (
+            "data/03_results/maps/sopron_armillaria_risk_ssp245_2050.tif",
+            False,
+        ),
+        "SSP5-8.5 (2050 Extreme)": (
+            "data/03_results/maps/sopron_armillaria_risk_ssp585_2050.tif",
+            False,
+        ),
+        "Delta Shift: SSP5-8.5 vs Baseline": (
+            "data/03_results/maps/sopron_armillaria_delta_ssp585_2050.tif",
+            True,
+        ),
     }
 
     tif_target, is_delta_mode = scenario_map_files.get(
@@ -439,8 +448,8 @@ with top_col1:
         c_lat = map_data["last_clicked"]["lat"]
         c_lon = map_data["last_clicked"]["lng"]
         if (
-                abs(c_lat - st.session_state.target_lat) > 1e-5
-                or abs(c_lon - st.session_state.target_lon) > 1e-5
+            abs(c_lat - st.session_state.target_lat) > 1e-5
+            or abs(c_lon - st.session_state.target_lon) > 1e-5
         ):
             st.session_state.target_lat = c_lat
             st.session_state.target_lon = c_lon

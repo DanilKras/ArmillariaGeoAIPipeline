@@ -52,7 +52,9 @@ def train_spatial_sdm():
         val_data = gdf.iloc[val_idx]
 
         if len(val_data["target"].unique()) < 2:
-            logger.warning(f"Fold {fold + 1} contains only a single class. Skipping ROC-AUC calculation.")
+            logger.warning(
+                f"Fold {fold + 1} contains only a single class. Skipping ROC-AUC calculation."
+            )
             continue
 
         model = xgb.XGBClassifier(**config["model_params"])
