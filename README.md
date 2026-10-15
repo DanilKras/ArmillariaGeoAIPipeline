@@ -17,7 +17,7 @@ The architecture unites macro-scale Species Distribution Modeling (SDM) with mic
 | :---: | :---: |
 | ![Interactive UI Preview](data/03_results/figures/dashboard_preview.png) | ![SHAP Beeswarm Summary](data/03_results/figures/spatial_shap_summary.png) |
 
-> 🔗 **Video Walkthrough:** [Project Demonstration Video](https://drive.google.com/file/d/1qoOQKh6-J5Bo6bT5EiugL-U74ZHSM_zP/view?usp=sharing)
+> 🔗 **Video Walkthrough:** [Project Demonstration Video](https://drive.google.com/file/d/1AI1xZWvd9r8_0N2thKkQfDaEZZnTEhwO/view?usp=sharing)
 
 ---
 
