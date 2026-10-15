@@ -81,7 +81,8 @@ The system integrates macro-scale Species Distribution Modeling (SDM) with micro
 │   │   ├── model_training.py       # Spatial Block CV & XGBoost training
 │   │   └── inference.py            # 11-band regional GeoTIFF exporter
 │   └── micro/                      # Micro-scale UAV & LiDAR fusion
-│       └── lidar_processor.py      # Point cloud & CHM extraction
+│       ├── data_preprocessor.py    # Initial data preprocessing
+|       └── lidar_processor.py      # Point cloud & CHM extraction
 └── utils/
     ├── config_loader.py            # Dynamic YAML configuration parser
     └── generate_future_risk_maps.py# CMIP6 2050 projection map generator
