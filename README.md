@@ -130,7 +130,7 @@ The architecture unites macro-scale Species Distribution Modeling (SDM) with mic
 
 ```bash
 # Clone the repository
-git clone [https://github.com/DanilKras/ArmillariaGeoAIPipeline.git](https://github.com/DanilKras/ArmillariaGeoAIPipeline.git)
+git clone https://github.com/DanilKras/ArmillariaGeoAIPipeline.git
 cd ArmillariaGeoAIPipeline
 
 # Create virtual environment and install dependencies
