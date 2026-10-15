@@ -210,7 +210,7 @@ def predict_cloud(request: InferenceRequest):
                         cell_size = 30.0
                         dy = (win_data[2, 1] - win_data[0, 1]) / (2.0 * cell_size)
                         dx = (win_data[1, 2] - win_data[1, 0]) / (2.0 * cell_size)
-                        slope_rad = np.arctan(np.sqrt(dx**2 + dy**2))
+                        slope_rad = np.arctan(np.sqrt(dx ** 2 + dy ** 2))
                         slope_deg = float(np.degrees(slope_rad))
                         aspect_rad = np.arctan2(-dy, dx)
                         northness = float(np.cos(aspect_rad))
