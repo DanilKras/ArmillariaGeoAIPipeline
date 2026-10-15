@@ -85,6 +85,7 @@ The system integrates macro-scale Species Distribution Modeling (SDM) with micro
 |       └── lidar_processor.py      # Point cloud & CHM extraction
 └── utils/
     ├── config_loader.py            # Dynamic YAML configuration parser
+    ├── logging.py            # Common logging configuration
     └── generate_future_risk_maps.py# CMIP6 2050 projection map generator
 
 ## Getting Started
